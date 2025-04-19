@@ -518,84 +518,28 @@ def generate_main_report(overall_results, repo_groups, current_time, html_report
             gap: 20px;
             margin-bottom: 30px;
         }}
-        .summary-card {
-            background: #fff;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-        .summary-title {
-            font-size: 18px;
-            font-weight: 600;
+        .summary-card {{
+            flex: 1;
+            min-width: 200px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        .summary-title {{
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
             color: #2c3e50;
-            margin-bottom: 15px;
-        }
-
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .summary-item {
-            text-align: center;
-            padding: 12px;
-            border-radius: 8px;
-            background: #f8f9fa;
-        }
-
-        .summary-item.passed {
-            background: #e8f5e9;
-            color: #28a745;
-        }
-
-        .summary-item.failed {
-            background: #ffebee;
-            color: #dc3545;
-        }
-
-        .summary-item.unknown {
-            background: #f5f5f5;
-            color: #6c757d;
-        }
-
-        .summary-value {
-            font-size: 20px;
-            font-weight: 600;
+        }}
+        .summary-value {{
+            font-size: 2em;
+            font-weight: bold;
             margin-bottom: 5px;
-        }
-
-        .summary-label {
-            font-size: 14px;
-            color: #666;
-        }
-
-        .progress-container {
-            margin-top: 15px;
-        }
-
-        .progress-bar {
-            height: 12px;
-            background: #e9ecef;
-            border-radius: 6px;
-            overflow: hidden;
-        }
-
-        .progress-bar-fill {
-            height: 100%;
-            background: #28a745;
-            border-radius: 6px;
-            transition: width 0.3s ease;
-        }
-
-        .progress-text {
-            margin-top: 8px;
-            font-size: 14px;
-            color: #666;
-            text-align: right;
-        }
+        }}
+        .summary-label {{
+            color: #6c757d;
+        }}
         .passed {{
             color: #28a745;
         }}
