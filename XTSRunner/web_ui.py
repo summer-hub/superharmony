@@ -88,5 +88,10 @@ def run_test(repo_type, sdk_version, release_mode):
 def get_status():
     return jsonify(test_status)
 
+def start_web_ui():
+    """启动Web UI"""
+    print("启动Web界面...")
+    app.run(host='0.0.0.0', port=5000, debug=False)
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

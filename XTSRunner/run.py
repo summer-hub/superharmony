@@ -40,6 +40,7 @@ def show_welcome_message():
 def parse_arguments():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description='运行三方库测试')
+    parser.add_argument('--web-ui', action='store_true', help='启动Web界面')
     parser.add_argument('--group', help='指定仓库组 (openharmony-sig, openharmony-tpc, openharmony_tpc_samples)')
     parser.add_argument('--libs-file', help='包含库列表的文件路径')
     parser.add_argument('--output-dir', help='输出目录')
@@ -144,6 +145,13 @@ def interactive_mode():
     from config import set_sdk_version
     set_sdk_version(args.sdk_version)
     
+    # 询问是否启动Web UI
+    use_web_ui = input("是否启动Web界面? (y/n，默认n): ").strip().lower() or 'n'
+    if use_web_ui == 'y':
+        args.web_ui = True
+    else:
+        args.web_ui = False
+    
     return args
 
 
@@ -195,12 +203,18 @@ def main():
     current_time = time.strftime("%Y/%m/%d %H时%M分%S秒", time.localtime(start_time))
     print(f"测试开始时间: {current_time}")
 
-    run_all_libraries(
-        repo_type=args_namespace.repo_type, 
-        args=args_namespace,
-        libraries=libraries,
-        urls=urls
-    )
+    # 如果指定了启动Web UI，则启动Web界面
+    if args.web_ui:
+        from web_ui import start_web_ui
+        start_web_ui()
+    else:
+        # 原有测试逻辑
+        run_all_libraries(
+            repo_type=args_namespace.repo_type, 
+            args=args_namespace,
+            libraries=libraries,
+            urls=urls
+        )
     end_time = time.time()
     current_time = time.strftime("%Y/%m/%d %H时%M分%S秒", time.localtime(end_time))
     print(f"测试结束时间: {current_time}")
