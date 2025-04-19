@@ -4,6 +4,7 @@ import pandas as pd
 
 from config import EXCEL_FILE_PATH
 
+
 def read_libraries_from_excel(library_name=None):
     """从Excel文件中读取库列表"""
     try:
@@ -19,7 +20,7 @@ def read_libraries_from_excel(library_name=None):
         if "三方库名称" not in df.columns:
             print("错误：Excel文件中没有'三方库名称'列")
             sys.exit(1)
-            
+
         # 检查是否有"URL"列
         if "URL" not in df.columns:
             print("错误：Excel文件中没有'URL'列")
@@ -28,13 +29,18 @@ def read_libraries_from_excel(library_name=None):
         # 提取三方库名称列和URL列的数据
         libraries = []
         urls = {}
-        
+
         for index, row in df.iterrows():
             lib_name = row["三方库名称"]
             url = row["URL"]
             if pd.notna(lib_name) and pd.notna(url):
-                libraries.append(lib_name)
-                urls[lib_name] = url
+                # 检查URL是否有效
+                owner, name, _ = parse_git_url(url)
+                if owner and name:
+                    libraries.append(lib_name)
+                    urls[lib_name] = url
+                else:
+                    print(f"警告：跳过无效URL的库 {lib_name} - {url}")
 
         if not libraries:
             print("警告：Excel文件中没有找到任何库")
@@ -42,8 +48,6 @@ def read_libraries_from_excel(library_name=None):
 
         # 如果没有指定库名，使用第一个库名
         component_name = library_name if library_name else libraries[0]
-
-        print(f"从Excel文件中读取到{len(libraries)}个库")
         # 返回库列表、当前处理的组件名和URL字典
         return libraries, component_name, urls
 
@@ -54,7 +58,7 @@ def read_libraries_from_excel(library_name=None):
 def parse_git_url(url):
     """
     解析Git URL，提取owner、name和sub_dir
-    
+
     例如：
     - https://gitcode.com/openharmony-tpc/commonmark
       owner: openharmony-tpc, name: commonmark, sub_dir: ""
@@ -65,22 +69,22 @@ def parse_git_url(url):
         # 确保URL是字符串
         if not isinstance(url, str):
             return None, None, None
-            
+
         # 移除URL末尾的斜杠（如果有）
         url = url.rstrip('/')
-        
+
         # 分割URL以提取路径部分
         parts = url.split('/')
-        
+
         # 确保URL格式正确
         if len(parts) < 5:
-            print(f"警告：URL格式不正确 - {url}")
+            print(f"警告：URL格式不正确 - {url} (至少需要5部分: {parts})")
             return None, None, None
-            
+
         # 提取owner和name
         owner = parts[3]
         name = parts[4]
-        
+
         # 检查是否有子目录
         sub_dir = ""
         if len(parts) > 5 and "tree" in parts:
@@ -88,10 +92,10 @@ def parse_git_url(url):
             tree_index = parts.index("tree")
             # 子目录是"tree/branch"之后的所有部分
             if tree_index + 2 < len(parts):
-                sub_dir = '/'.join(parts[tree_index+2:])
-        
+                sub_dir = '/'.join(parts[tree_index + 2:])
+
         return owner, name, sub_dir
-        
+
     except Exception as e:
         print(f"解析Git URL出错: {str(e)}")
         return None, None, None
@@ -99,7 +103,7 @@ def parse_git_url(url):
 def get_repo_info(library_name):
     """
     获取指定库的仓库信息
-    
+
     返回：
     - owner: 仓库所有者
     - name: 仓库名称
@@ -108,20 +112,60 @@ def get_repo_info(library_name):
     try:
         # 获取库列表和URL字典
         _, _, urls = read_libraries_from_excel()
-        
+
         # 检查指定的库是否存在
         if library_name not in urls:
             print(f"错误：找不到库 {library_name} 的URL信息")
             return None, None, None
-            
+
         # 获取库的URL
         url = urls[library_name]
-        
+
         # 解析URL
         owner, name, sub_dir = parse_git_url(url)
-        
+
         return owner, name, sub_dir
-        
+
     except Exception as e:
         print(f"获取仓库信息出错: {str(e)}")
         return None, None, None
+
+
+def filter_library_by_repo_type(library_name, repo_type):
+    """
+    根据仓库类型过滤库
+    
+    参数:
+        library_name: 库名称
+        repo_type: 仓库类型 (openharmony-sig, openharmony-tpc, openharmony_tpc_samples)
+        
+    返回:
+        bool: 如果库属于指定的仓库类型，则返回True，否则返回False
+    """
+    try:
+        # 获取库的URL
+        _, _, urls = read_libraries_from_excel()
+        
+        if library_name not in urls:
+            return False
+            
+        url = urls[library_name]
+        
+        # 解析URL获取仓库信息
+        owner, name, _ = parse_git_url(url)
+        
+        if not owner or not name:
+            return False
+            
+        # 根据仓库类型进行过滤
+        if repo_type == "openharmony-sig" and owner == "openharmony-sig":
+            return True
+        elif repo_type == "openharmony-tpc" and owner == "openharmony-tpc" and name != "openharmony_tpc_samples":
+            return True
+        elif repo_type == "openharmony_tpc_samples" and name == "openharmony_tpc_samples":
+            return True
+            
+        return False
+        
+    except Exception as e:
+        print(f"过滤库时出错: {str(e)}")

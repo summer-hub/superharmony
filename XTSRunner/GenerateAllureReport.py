@@ -4,7 +4,6 @@ import time
 import uuid
 
 from config import ALLURE_RESULTS_DIR
-from ReadExcel import read_libraries_from_excel
 
 
 def generate_allure_report(test_results, library_name):
@@ -84,6 +83,13 @@ def generate_allure_report(test_results, library_name):
                         {"name": "parentSuite", "value": library_name}
                     ]
                 }
+
+                # 如果是失败的测试，添加错误信息
+                if test_status != "passed":
+                    allure_result["statusDetails"] = {
+                        "message": test.get('error_message', 'Test failed'),
+                        "trace": test.get('error_stack', 'No stack trace available')
+                    }
 
                 # 写入Allure结果文件
                 result_file = os.path.join(ALLURE_RESULTS_DIR, f"{library_name}_{test_class}_{test_name}-result.json")

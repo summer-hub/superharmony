@@ -8,7 +8,7 @@ from colorama import  Fore
 from GenerateTestReport import parse_test_results, display_test_tree
 from ModfyConfig import _run_config_scripts
 from ReportGenerator import generate_reports
-from config import PROJECT_DIR, ohpm_path, BUNDLE_NAME, node_path, hvigor_path, TARGET_DIR
+from config import PROJECT_DIR, ohpm_path, BUNDLE_NAME_SIG, node_path, hvigor_path
 from ReadExcel import get_repo_info
 
 
@@ -64,7 +64,41 @@ def clone_and_build(library_name):
             print(Fore.YELLOW + "正在执行release模式编译..." + Fore.RESET)
             _build_release()
         else:
-            print(Fore.YELLOW + "跳过release模式编译" + Fore.RESET)
+            print(Fore.YELLOW + "执行debug模式编译..." + Fore.RESET)
+            # 检查并确保混淆规则文件包含必要的-keep规则
+            obfuscation_file = os.path.join("entry", "obfuscation-rules.txt")
+            if os.path.exists(obfuscation_file):
+                with open(obfuscation_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # 获取当前库的依赖项
+                dependencies = _get_ohos_name(library_name)
+                
+                # 检查是否已包含必要的-keep规则
+                needs_update = False
+                for dep in dependencies:
+                    if f"-keep ./oh_modules/{dep}" not in content:
+                        needs_update = True
+                        break
+                
+                if needs_update:
+                    print(Fore.YELLOW + "添加必要的-keep规则到混淆文件..." + Fore.RESET)
+                    with open(obfuscation_file, 'a', encoding='utf-8') as f:
+                        for dep in dependencies:
+                            f.write(f"\n-keep\n./oh_modules/{dep}\n")
+            
+            # 执行debug模式构建
+            subprocess.run([
+                node_path,
+                hvigor_path,
+                "--sync",
+                "-p", "product=default",
+                "-p", "buildMode=debug",
+                "--analyze=normal",
+                "--parallel",
+                "--incremental",
+                "--daemon"
+            ], check=True)
 
         # 9.构建项目
         _build_project()
@@ -103,6 +137,7 @@ def _build_project():
     # 并行构建参数
     build_args = ["--analyze=normal", "--parallel", "--incremental"]
 
+    # 同步项目
     subprocess.run([node_path, hvigor_path,
                     "--sync",
                     "-p", "product=default",
@@ -110,22 +145,76 @@ def _build_project():
                     "--no-daemon",
                     ], check=True)
 
-    # 根据目标目录判断构建类型
-    if any(os.path.exists(os.path.join(path, TARGET_DIR))
-           for path in [".", "..", os.path.join("..", "..")]):
-        subprocess.run([node_path, hvigor_path,
-                        "--mode", "module",
-                        "-p", "module=entry@default,sharedLibrary@default",
-                        "-p", "product=default",
-                        "-p", "requireDeviceType=phone",
-                        "assembleHap", "assembleHsp", *build_args, "--daemon"
-                        ], check=True)
+    # 检查项目结构，确定是否存在sharedLibrary模块
+    has_shared_library = os.path.exists("sharedlibrary") or os.path.exists("sharedLibrary")
+    shared_library_name = None
+    
+    # 确定正确的sharedLibrary目录名称（大小写敏感）
+    if os.path.exists("sharedlibrary"):
+        shared_library_name = "sharedlibrary"
+    elif os.path.exists("sharedLibrary"):
+        shared_library_name = "sharedLibrary"
+    
+    print(f"检测到{'存在' if has_shared_library else '不存在'} sharedLibrary 模块")
+
+    # 根据项目结构选择构建命令
+    if has_shared_library:
+        # 构建包含sharedLibrary的项目
+        try:
+            subprocess.run([node_path, hvigor_path,
+                            "--mode", "module",
+                            "-p", f"module=entry@default,{shared_library_name}@default",
+                            "-p", "product=default",
+                            "-p", "requireDeviceType=phone",
+                            "assembleHap", "assembleHsp", *build_args, "--daemon"
+                            ], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"警告: 构建sharedLibrary模块失败: {e}")
+            print("尝试仅构建entry模块...")
+            subprocess.run([node_path, hvigor_path,
+                            "--mode", "module",
+                            "-p", "module=entry@default",
+                            "-p", "product=default",
+                            "-p", "requireDeviceType=phone",
+                            "assembleHap", *build_args, "--daemon"
+                            ], check=True)
     else:
+        # 构建不包含sharedLibrary的项目
         subprocess.run([node_path, hvigor_path,
                         "--mode", "module",
                         "-p", "product=default",
                         "assembleHap", *build_args, "--daemon"
                         ], check=True)
+
+def _get_ohos_name(library_name):
+    """获取oh-package.json5中的主模块名称"""
+    try:
+        # 特殊库处理 - 可以在这里添加特殊库的路径
+        special_libs = {
+            "aki": "platform/ohos/publish/aki/oh-package.json5"
+        }
+        
+        # 确定oh-package.json5路径
+        if library_name in special_libs:
+            package_path = os.path.join(os.getcwd(), special_libs[library_name])
+        else:
+            package_path = os.path.join(os.getcwd(), "oh-package.json5")
+            
+        if not os.path.exists(package_path):
+            return ""
+            
+        with open(package_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # 解析主模块名称
+        main_pattern = r'"name":\s*"(@ohos/[a-zA-Z0-9_-]+)"'
+        match = re.search(main_pattern, content)
+        
+        return match.group(1) if match else ""
+        
+    except Exception as e:
+        print(f"获取oh-package.json5主模块名称失败: {e}")
+        return ""
 
 def _build_release():
     """构建项目为release模式"""
@@ -140,7 +229,10 @@ def _build_release():
             new_lines = []
             i = 0
             while i < len(lines):
-                if lines[i].strip() == "-keep" and i+1 < len(lines) and lines[i+1].strip().startswith("./oh_modules/@ohos/"):
+                if (isinstance(lines[i], str) and lines[i].strip() == "-keep" and 
+                    i+1 < len(lines) and 
+                    isinstance(lines[i+1], str) and 
+                    lines[i+1].strip().startswith("./oh_modules/@ohos/")):
                     # Skip both lines
                     i += 2
                     modified = True
@@ -153,16 +245,7 @@ def _build_release():
                     f.writelines(new_lines)
                 print(Fore.YELLOW + "已移除obfuscation-rules.txt中的特定规则" + Fore.RESET)
 
-        # 2. 安装依赖
-        subprocess.run([
-            ohpm_path,
-            "install",
-            "--all",
-            "--registry", "https://ohpm.openharmony.cn/ohpm",
-            "--strict_ssl", "true"
-        ], check=True)
-
-        # 3. release模式构建
+        # 2. release模式构建
         try:
             subprocess.run([
                 node_path,
@@ -255,19 +338,54 @@ def run_xts(library_name=None):
         # 3.运行XTS
         tmp_dir = "data/local/tmp/24141c3f96304b23aec112d51ed45ca5"
 
-        subprocess.run(["hdc", "uninstall", BUNDLE_NAME], check=True)
+        # 卸载已有应用
+        subprocess.run(["hdc", "uninstall", BUNDLE_NAME_SIG], check=True)
+        
+        # 创建临时目录
         subprocess.run(["hdc", "shell", "mkdir", tmp_dir], check=True)
+        
+        # 发送entry模块HAP文件
         subprocess.run([
             "hdc", "file", "send",
             "entry\\build\\default\\outputs\\default\\entry-default-signed.hap",
             tmp_dir
         ], check=True)
+        
+        # 发送测试HAP文件
         subprocess.run([
             "hdc", "file", "send",
             "entry\\build\\default\\outputs\\ohosTest\\entry-ohosTest-signed.hap",
             tmp_dir
         ], check=True)
+        
+        # 检查是否存在sharedLibrary模块
+        has_shared_library = False
+        shared_library_path = None
+        
+        # 检查不同大小写的sharedLibrary目录
+        if os.path.exists("sharedlibrary"):
+            shared_library_path = "sharedlibrary\\build\\default\\outputs\\default\\sharedlibrary-default-signed.hsp"
+            has_shared_library = os.path.exists(shared_library_path)
+        elif os.path.exists("sharedLibrary"):
+            shared_library_path = "sharedLibrary\\build\\default\\outputs\\default\\sharedLibrary-default-signed.hsp"
+            has_shared_library = os.path.exists(shared_library_path)
+        
+        # 如果存在sharedLibrary模块，发送HSP文件
+        if has_shared_library and shared_library_path:
+            print(f"检测到sharedLibrary模块，发送HSP文件: {shared_library_path}")
+            try:
+                subprocess.run([
+                    "hdc", "file", "send",
+                    shared_library_path,
+                    tmp_dir
+                ], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"警告: 发送sharedLibrary HSP文件失败: {e}")
+        
+        # 安装应用
         subprocess.run(["hdc", "shell", "bm", "install", "-p", tmp_dir], check=True)
+        
+        # 清理临时目录
         subprocess.run(["hdc", "shell", "rm", "-rf", tmp_dir], check=True)
 
         # 4.提取并运行测试
@@ -275,7 +393,7 @@ def run_xts(library_name=None):
         print(f"测试名称: {test_names}")
         if test_names:
             output = run_in_new_cmd(test_names, original_name)  # 使用original_name
-            display_test_tree(test_names, output)
+            display_test_tree(output)
         else:
             print(Fore.RED + "未找到可执行的测试用例" + Fore.RESET)
             return ""
@@ -309,7 +427,7 @@ def run_in_new_cmd(test_names, library_name):
         print(f"未找到TestRunner目录，使用默认值: {runner_dir}")
 
     # 使用检测到的路径执行测试
-    cmd = (f'hdc shell aa test -b {BUNDLE_NAME} -m entry_test '
+    cmd = (f'hdc shell aa test -b {BUNDLE_NAME_SIG} -m entry_test '
            f'-s unittest /ets/{runner_dir}/OpenHarmonyTestRunner -s class {test_classes} -s timeout 15000')
 
     print(f"执行测试命令: {cmd}")
@@ -449,109 +567,78 @@ def extract_test_names():
 
 def _clone_repo(library_name):
     """处理带子模块的仓库克隆"""
+    # 获取仓库信息
     owner, name, sub_dir = get_repo_info(library_name)
-    repo_url = f"https://gitcode.com/{owner}/{name}.git"
-    
+    if not owner or not name:
+        print(f"错误：无法获取库 {library_name} 的仓库信息")
+        return False
+
+    # 需要递归克隆的仓库列表
+    recurse_repos = {
+        "openharmony_tpc_samples",
+        "ohos_grpc_node", 
+        "ohos_mqtt",
+        "ohos_coap",
+        "mp4parser",
+        "ohos_videocompressor"
+    }
+
+    # 构建克隆URL
+    base_url = f"https://gitcode.com/{owner}/{name}"
+    clone_url = f"{base_url}.git"
+    target_dir = name if not sub_dir else sub_dir
+
     # 检查并清理已存在的目录
-    if os.path.exists(name):
-        print(f"检测到已存在的目录 {name}，尝试更新...")
-        try:
-            # 进入目录并更新子模块
-            os.chdir(name)
-            subprocess.run(["git", "pull"], check=True)
-            if sub_dir:
-                subprocess.run(["git", "submodule", "update", "--init", "--recursive", sub_dir], check=True)
-            os.chdir("..")
+    if os.path.exists(target_dir):
+        if not os.listdir(target_dir):
+            os.rmdir(target_dir)
+            print(f"删除空目录 {target_dir} 后重新克隆")
+        else:
+            print(f"目录 {target_dir} 已存在，跳过克隆")
             return True
-        except Exception as e:
-            print(f"更新仓库失败: {e}")
-            # 如果更新失败，删除目录重新克隆
-            shutil.rmtree(name)
-    
-    # 克隆主仓库
-    print(f"克隆仓库 {repo_url}...")
-    subprocess.run(["git", "clone", repo_url, "--recurse-submodules"], check=True)
-    
-    # 如果有子目录，确保子模块初始化
-    if sub_dir:
-        os.chdir(name)
-        subprocess.run(["git", "submodule", "update", "--init", "--recursive", sub_dir], check=True)
-        os.chdir("..")
-    
-    return True
-    # 尝试开启 Windows 下的长路径支持
+
+    # 设置Windows长路径支持
     try:
         subprocess.run(["git", "config", "--system", "core.longpaths", "true"], check=True)
         print("已设置 git core.longpaths 为 true")
     except Exception as e:
         print(f"设置 git core.longpaths 失败（可能需要管理员权限，可忽略）: {e}")
-    """执行Git克隆，包含特殊处理逻辑"""
+
+    # 构建克隆命令
+    cmd = ["git", "clone", clone_url]
+    if name in recurse_repos:
+        cmd.append("--recurse-submodules")
+        print(f"克隆仓库 {clone_url} 及其子模块...")
+    else:
+        print(f"克隆仓库 {clone_url}...")
+
     try:
-        # 从ReadExcel获取仓库信息
-        owner, name, sub_dir = get_repo_info(library_name)
-        
-        if not owner or not name:
-            print(f"错误：无法获取库 {library_name} 的仓库信息")
-            return
-            
-        # 处理URL格式
-        base_url = f"https://gitcode.com/{owner}/{name}"
-
-        # 需要递归克隆的仓库列表
-        recurse_repos = [
-            "openharmony_tpc_samples",
-            "ohos_grpc_node",
-            "ohos_mqtt",
-            "ohos_coap",
-            "mp4parser",
-            "ohos_videocompressor"
-        ]
-
-        # 构建克隆URL
-        if name == "openharmony_tpc_samples" and sub_dir:
-            # 对于openharmony_tpc_samples的子目录，使用基础URL
-            clone_url = f"{base_url}.git"
-        else:
-            clone_url = f"{base_url}.git"
-
-        # 检查目录是否存在
-        target_dir = name if not sub_dir else sub_dir
-        if os.path.exists(target_dir):
-            if not os.listdir(target_dir):
-                os.rmdir(target_dir)
-                print(f"删除空目录{target_dir}后重新克隆")
-            else:
-                print(f"目录{target_dir}已存在，跳过克隆")
-                return
-
-        # 构建克隆命令
-        cmd = ["git", "clone", clone_url]
-        if name in recurse_repos:
-            cmd.append("--recurse-submodules")
-            print(f"克隆仓库 {clone_url} 及其子模块...")
-        else:
-            print(f"克隆仓库 {clone_url}...")
-
         # 执行克隆
         subprocess.run(cmd, check=True)
 
-        # 克隆后自动尝试 checkout 和子模块更新
-        try:
-            # 进入目标目录
-            os.chdir(target_dir)
-            # 尝试 checkout
-            subprocess.run(["git", "checkout", "."], check=True)
-            # 更新所有子模块
-            subprocess.run(["git", "submodule", "update", "--init", "--recursive"], check=True)
-        except Exception as e:
-            print(f"克隆后自动checkout或子模块更新失败: {e}")
-        finally:
-            # 返回上级目录，避免影响后续流程
-            os.chdir("..")
+        # 处理特殊目录结构
         if sub_dir and name == "openharmony_tpc_samples":
             os.rename(name, sub_dir)
             print(f"重命名目录 {name} 为 {sub_dir}")
 
+        # 进入目标目录进行后续操作
+        os.chdir(target_dir)
+        try:
+            # 确保子模块初始化
+            if name not in recurse_repos or sub_dir:
+                subprocess.run(["git", "submodule", "update", "--init", "--recursive"], check=True)
+            
+            # 重置工作区
+            subprocess.run(["git", "checkout", "."], check=True)
+        finally:
+            os.chdir("..")
+
         print(f"成功克隆仓库 {clone_url}")
+        return True
+
     except subprocess.CalledProcessError as e:
         print(f"Git克隆失败: {e}")
+        # 清理失败克隆的目录
+        if os.path.exists(target_dir):
+            shutil.rmtree(target_dir, ignore_errors=True)
+        return False

@@ -4,6 +4,7 @@ import json
 import time
 import traceback
 import uuid
+import argparse
 from colorama import init, Fore
 
 from BuildAndRun import clone_and_build
@@ -13,17 +14,17 @@ from ReadExcel import read_libraries_from_excel, parse_git_url
 from ReportGenerator import generate_final_report
 from config import check_dependencies, PROJECT_DIR, ALLURE_RESULTS_DIR, npm_path, ALLURE_REPORT_DIR
 
-from GenerateTestReport import display_test_tree
 
-
-def run_all_libraries():
+def run_all_libraries(repo_type, args, libraries=None, urls=None):
+    global name
     init()  # 初始化颜色输出
     """按顺序执行Excel中的所有库"""
     # 检查依赖
     check_dependencies()
     
-    # 从Excel读取库列表和URL信息
-    libraries, _, urls = read_libraries_from_excel()
+    # 如果没有传入libraries和urls，则从Excel读取
+    if libraries is None or urls is None:
+        libraries, _, urls = read_libraries_from_excel()
     
     # 记录总体测试结果
     overall_results = {
@@ -35,6 +36,9 @@ def run_all_libraries():
         "failed_libs": 0,     # 失败的库数
         "libraries": []       # 库级别的详细结果
     }
+
+    # 添加错误列表库
+    failed_libraries = []
     
     # 按顺序执行每个库
     for idx, library_name in enumerate(libraries, 1):
@@ -56,22 +60,10 @@ def run_all_libraries():
             if not owner or not name:
                 print(f"错误：无法从URL解析出有效的仓库信息: {url}")
                 continue
-                
             print(f"解析URL得到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}")
-            
-            # 执行库测试
-            output = clone_and_build(library_name)
 
-            # 使用display_test_tree显示测试结果
-            if output:
-                # 将output传递给display_test_tree函数以显示测试结果
-                from contextlib import redirect_stdout
-                import io
-                with redirect_stdout(io.StringIO()):
-                    test_results = display_test_tree([name], output)
-            else:
-                print(f"警告: 库 {library_name} 没有返回测试输出")
-                test_results = None
+            # 调用clone and build函数并获取测试结果
+            test_results = clone_and_build(library_name)
             
             # 确保test_results是字典类型
             if isinstance(test_results, dict):
@@ -194,6 +186,18 @@ def run_all_libraries():
             
             continue
     
+    
+    # 测试完成后，记录失败的库
+    if failed_libraries:
+        print(f"{Fore.RED}以下库测试失败:{Fore.RESET}")
+        for lib in failed_libraries:
+            print(f"- {lib}")
+        
+        # 将失败的库写入文件
+        with open(os.path.join(args.output_dir, f"{repo_type}_failed_libraries.txt"), 'w') as f:
+            for lib in failed_libraries:
+                f.write(f"{lib}\n")
+
     # 生成总体Allure报告
     try:
         print("\n生成Allure总体报告...")
@@ -423,7 +427,6 @@ def run_all_libraries():
     print(f"{'='*50}")
 
 if __name__ == "__main__":
-    # Get start time and print
     start_time = time.time()
     current_time = time.strftime("%Y/%m/%d %H时%M分%S秒", time.localtime(start_time))
     print(f"测试开始时间: {current_time}")
@@ -448,8 +451,8 @@ if __name__ == "__main__":
             break
         print("请输入 'y' 或 'n'")
     
-    # Run the main function
-    run_all_libraries()
+    # Run the main function with required arguments
+    run_all_libraries(repo_type="default", args=argparse.Namespace(output_dir=os.getcwd()))
     
     # Get end time and print
     end_time = time.time()
@@ -464,5 +467,4 @@ if __name__ == "__main__":
     print(f"总耗时: {hours}小时{minutes}分钟{seconds}秒")
     
     # 在所有库测试完成后生成最终报告
-
     generate_final_report()

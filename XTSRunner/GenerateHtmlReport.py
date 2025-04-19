@@ -376,8 +376,12 @@ def generate_main_report(overall_results, repo_groups, current_time, html_report
         total_tests = overall_results.get("total", 0)
         passed_tests = overall_results.get("passed", 0)
         failed_tests = overall_results.get("failed", 0)
+        unknown_tests = total_tests - passed_tests - failed_tests
         total_libs = overall_results.get("total_libs", 0)
         passed_libs = overall_results.get("passed_libs", 0)
+        failed_libs = total_libs - passed_libs
+        unknown_libs = sum(1 for lib in overall_results.get("libraries", []) 
+                      if lib.get("total", 0) == 0)
         
         # 计算通过率
         test_pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
@@ -441,6 +445,7 @@ def generate_main_report(overall_results, repo_groups, current_time, html_report
                                 
                             lib_pass_rate = (lib_passed / lib_total * 100) if lib_total > 0 else 0
                             status_class = "passed" if lib_status == "passed" else ("unknown" if lib_status == "unknown" else "failed")
+                            report_path = lib.get("report_path", "")
                             
                             repo_html += f"""
                             <tr class="{status_class}">
@@ -513,28 +518,84 @@ def generate_main_report(overall_results, repo_groups, current_time, html_report
             gap: 20px;
             margin-bottom: 30px;
         }}
-        .summary-card {{
-            flex: 1;
-            min-width: 200px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .summary-title {{
-            font-size: 1.2em;
-            font-weight: bold;
-            margin-bottom: 10px;
+        .summary-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .summary-title {
+            font-size: 18px;
+            font-weight: 600;
             color: #2c3e50;
-        }}
-        .summary-value {{
-            font-size: 2em;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }}
-        .summary-label {{
+            margin-bottom: 15px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .summary-item {
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+
+        .summary-item.passed {
+            background: #e8f5e9;
+            color: #28a745;
+        }
+
+        .summary-item.failed {
+            background: #ffebee;
+            color: #dc3545;
+        }
+
+        .summary-item.unknown {
+            background: #f5f5f5;
             color: #6c757d;
-        }}
+        }
+
+        .summary-value {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .summary-label {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .progress-container {
+            margin-top: 15px;
+        }
+
+        .progress-bar {
+            height: 12px;
+            background: #e9ecef;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #28a745;
+            border-radius: 6px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #666;
+            text-align: right;
+        }
         .passed {{
             color: #28a745;
         }}
@@ -613,31 +674,59 @@ def generate_main_report(overall_results, repo_groups, current_time, html_report
     
     <div class="summary">
         <div class="summary-card">
-            <div class="summary-title">测试用例</div>
-            <div class="summary-value">{total_tests}</div>
-            <div class="summary-label">总测试数</div>
-            <div class="summary-value passed">{passed_tests}</div>
-            <div class="summary-label">通过测试</div>
-            <div class="summary-value failed">{failed_tests}</div>
-            <div class="summary-label">失败测试</div>
-            <div class="progress-bar">
-                <div class="progress-bar-fill" style="width: {test_pass_rate}%;"></div>
+            <div class="summary-title">测试用例统计</div>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="summary-value">{total_tests}</div>
+                    <div class="summary-label">总测试数</div>
+                </div>
+                <div class="summary-item passed">
+                    <div class="summary-value">{passed_tests}</div>
+                    <div class="summary-label">通过测试</div>
+                </div>
+                <div class="summary-item failed">
+                    <div class="summary-value">{failed_tests}</div>
+                    <div class="summary-label">失败测试</div>
+                </div>
+                <div class="summary-item unknown">
+                    <div class="summary-value">{unknown_tests}</div>
+                    <div class="summary-label">未执行测试</div>
+                </div>
             </div>
-            <div class="summary-label">通过率: {test_pass_rate:.2f}%</div>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" style="width: {test_pass_rate}%;"></div>
+                </div>
+                <div class="progress-text">通过率: {test_pass_rate:.2f}%</div>
+            </div>
         </div>
         
         <div class="summary-card">
-            <div class="summary-title">三方库</div>
-            <div class="summary-value">{total_libs}</div>
-            <div class="summary-label">总库数</div>
-            <div class="summary-value passed">{passed_libs}</div>
-            <div class="summary-label">通过库数</div>
-            <div class="summary-value failed">{total_libs - passed_libs}</div>
-            <div class="summary-label">失败库数</div>
-            <div class="progress-bar">
-                <div class="progress-bar-fill" style="width: {lib_pass_rate}%;"></div>
+            <div class="summary-title">三方库统计</div>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="summary-value">{total_libs}</div>
+                    <div class="summary-label">总库数</div>
+                </div>
+                <div class="summary-item passed">
+                    <div class="summary-value">{passed_libs}</div>
+                    <div class="summary-label">通过库数</div>
+                </div>
+                <div class="summary-item failed">
+                    <div class="summary-value">{failed_libs}</div>
+                    <div class="summary-label">失败库数</div>
+                </div>
+                <div class="summary-item unknown">
+                    <div class="summary-value">{unknown_libs}</div>
+                    <div class="summary-label">未测试库数</div>
+                </div>
             </div>
-            <div class="summary-label">通过率: {lib_pass_rate:.2f}%</div>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" style="width: {lib_pass_rate}%;"></div>
+                </div>
+                <div class="progress-text">通过率: {lib_pass_rate:.2f}%</div>
+            </div>
         </div>
     </div>
     

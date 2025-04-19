@@ -9,51 +9,53 @@ from config import REPORT_DIR, EXCEL_FILE_PATH
 from ReadExcel import read_libraries_from_excel
 from ExtractTestDetails import extract_test_details
 
-def display_test_tree(test_names, output):
+
+def display_test_tree(output):
     """在终端中显示树形结构的测试结果"""
     print("\n" + "=" * 50)
     print(Fore.CYAN + "测试结果摘要:" + Fore.RESET)
     print("=" * 50)
-    
+
     # 确保output是字符串
     if isinstance(output, tuple):
         output = output[0] if output and len(output) > 0 else ""
-    
+
     # 使用ExtractTestDetails.py的解析方法
     test_results, summary, class_times = extract_test_details(output)
-    
+
     # 显示测试树
-    print(Fore.CYAN + f"✓ Test Results {summary.get('total_time_ms', 0)}ms" + Fore.RESET)
-    
+    print(Fore.CYAN + f"[PASS] Test Results {summary.get('total_time_ms', 0)}ms" + Fore.RESET)
+
     # 确保测试结果与摘要一致
     adjust_test_results_to_match_summary(test_results, summary)
-    
+
     for test_class, tests in test_results.items():
         # 获取测试类的总耗时
         class_time_ms = class_times.get(test_class, 0)
-        
+
         # 检查测试类是否全部通过
         class_passed = all(test.get('status') == 'passed' for test in tests)
-        class_icon = Fore.GREEN + "✓" if class_passed else Fore.RED + "✗"
-        
+        class_icon = Fore.GREEN + "[PASS]" if class_passed else Fore.RED + "[FAIL]"
+
         print(f"  {class_icon} {test_class}    {class_time_ms}ms{Fore.RESET}")
-        
+
         for test in tests:
             status = test.get('status')
-            icon = Fore.GREEN + "✓" if status == 'passed' else Fore.RED + "✗"
+            icon = Fore.GREEN + "[PASS]" if status == 'passed' else Fore.RED + "[FAIL]"
             time_str = test.get('time', '0ms')
-            
+
             print(f"    {icon} {test.get('name')}{Fore.RESET}    {time_str}")
-            
+
             # 如果有错误信息，显示错误信息
             if 'error_stack' in test and test['error_stack']:
                 print(f"      {Fore.RED}Error: {test['error_stack']}{Fore.RESET}")
-    
+
     print("=" * 50)
     print(f"总计: {summary['passed']}/{summary['total']} 测试通过")
     print("=" * 50 + "\n")
-    
+
     return test_results, summary, class_times
+
 
 def parse_test_results(test_names, output):
     """
@@ -66,12 +68,13 @@ def parse_test_results(test_names, output):
     # 直接调用ExtractTestDetails.py的解析方法
     return extract_test_details(output)
 
+
 def update_excel_result(summary, original_name):
     """更新Excel文件中的测试结果"""
     try:
         wb = load_workbook(EXCEL_FILE_PATH)
         ws = wb.active
-        
+
         # 判断测试是否全部通过
         # 修改判断逻辑：当总测试数为0时，应该标记为失败
         if summary["total"] == 0:
@@ -81,62 +84,65 @@ def update_excel_result(summary, original_name):
         else:
             # 正常情况：只有当没有失败和错误时才标记为通过
             all_passed = (summary["failed"] == 0 and summary["error"] == 0)
-        
+
         result_value = "pass" if all_passed else "fail"
-        
+
         # 查找测试结果列的索引
         result_column_index = None
         for i, cell in enumerate(ws[1]):  # 假设第一行是标题行
             if cell.value == "测试结果":
                 result_column_index = i
                 break
-        
+
         if result_column_index is None:
             print(Fore.YELLOW + "警告：未找到'测试结果'列，尝试使用第三列" + Fore.RESET)
             result_column_index = 2  # 索引从0开始，第三列索引为2
-        
+
         # 更新Excel中的测试结果列
         for row_index, row in enumerate(ws.iter_rows(min_row=2), start=2):  # 从第二行开始（跳过标题行）
             # 获取当前行的三方库名称
             library_name = row[0].value
             if library_name == original_name:  # 只更新当前测试的三方库结果
-                ws.cell(row=row_index, column=result_column_index+1).value = result_value
+                ws.cell(row=row_index, column=result_column_index + 1).value = result_value
                 print(f"已更新 {library_name} 的测试结果为: {result_value}")
                 break
-        
+
         wb.save(EXCEL_FILE_PATH)
         print(f"测试结果已更新到Excel文件")
     except Exception as e:
         print(f"更新Excel文件失败: {str(e)}")
+
 
 def adjust_test_results_to_match_summary(test_results, summary):
     """调整测试结果以匹配摘要信息"""
     # 计算当前测试结果中的通过和失败数
     current_passed = sum(1 for cls in test_results.values() for test in cls if test.get('status') == 'passed')
     current_total = sum(len(tests) for tests in test_results.values())
-    
+
     # 如果摘要中有数据但解析结果为空，不创建默认测试类，而是保留原始摘要数据
     if current_total == 0 and summary["total"] > 0:
         print(f"警告：未能从输出中解析出具体的测试类和方法，但摘要显示有 {summary['total']} 个测试")
         return
-    
+
     # 如果摘要中没有数据但解析结果有数据，使用解析结果更新摘要
     if summary["total"] == 0 and current_total > 0:
         summary["total"] = current_total
         summary["passed"] = current_passed
         summary["failed"] = current_total - current_passed
-        
+
         print(f"根据解析结果更新了摘要数据: {current_passed}/{current_total} 测试通过")
         return
-    
+
     # 如果两者都有数据但不一致，只显示警告，不调整测试结果
     if current_total != summary["total"] or current_passed != summary["passed"]:
-        print(f"警告：解析的测试结果 ({current_passed}/{current_total}) 与摘要 ({summary['passed']}/{summary['total']}) 不一致")
+        print(
+            f"警告：解析的测试结果 ({current_passed}/{current_total}) 与摘要 ({summary['passed']}/{summary['total']}) 不一致")
+
 
 def save_test_json(test_results, summary, class_times, component_name):
     """
     将测试结果保存为JSON文件
-    
+
     参数:
         test_results: 测试结果字典
         summary: 测试摘要信息
@@ -147,7 +153,7 @@ def save_test_json(test_results, summary, class_times, component_name):
     test_json_dir = os.path.join(os.getcwd(), "TestJson")
     if not os.path.exists(test_json_dir):
         os.makedirs(test_json_dir)
-    
+
     # 创建一个包含所有信息的字典
     data = {
         "summary": summary,
@@ -156,15 +162,16 @@ def save_test_json(test_results, summary, class_times, component_name):
         # 添加顶层的 total_time_ms 字段
         "total_time_ms": summary.get('total_time_ms', 0)
     }
-    
+
     # 生成JSON文件名
     output_file = os.path.join(test_json_dir, f"{component_name}_results.json")
-    
+
     # 保存为JSON文件
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    
+
     print(f"测试结果已保存到 {output_file}")
+
 
 def generate_test_report(test_names, output, original_name):
     """生成HTML格式的测试报告"""
@@ -176,13 +183,13 @@ def generate_test_report(test_names, output, original_name):
             library_name = str(original_name[0])
         else:
             library_name = str(original_name) if original_name else ""
-            
+
         # 尝试从Excel获取库名
         libraries, current_library, _ = read_libraries_from_excel(library_name)
-        
+
         # 确定组件名 - 如果提供了library_name，使用它，否则使用current_library
         component_name = library_name if library_name else current_library
-        
+
         # 如果组件名在libraries列表中，使用它，否则使用原始名称
         if component_name not in libraries and original_name:
             component_name = original_name
@@ -193,10 +200,10 @@ def generate_test_report(test_names, output, original_name):
 
     # 解析测试结果
     test_results, summary, class_times = parse_test_results(test_names, output)
-    
+
     # 保存测试结果为JSON
     save_test_json(test_results, summary, class_times, component_name)
-    
+
     # 更新Excel中的测试结果
     update_excel_result(summary, component_name)
 
@@ -234,10 +241,10 @@ def generate_test_report(test_names, output, original_name):
             test_time = test.get('time', '0ms')
             test_name = test.get('name', 'unknown')  # 确保获取测试名称
             error_stack = test.get('error_stack', '')
-            
+
             # 添加错误堆栈（如果有）
             error_html = f'<div class="error-stack">{error_stack}</div>' if error_stack else ''
-            
+
             # 修改测试方法HTML，确保测试名称正确显示
             test_html.append(f"""
                             <li class="level test {test_status}">
@@ -260,7 +267,7 @@ def generate_test_report(test_names, output, original_name):
                                 {''.join(test_html)}
                             </ul>
                         </li>""")
-    
+
     # 构建状态信息字符串 - 这里使用了一些定义在模板中的样式类
     status_info = f'<span class="total">{total_tests} total, </span><span class="passed">{total_passed} passed</span>'
     if total_failed > 0:
@@ -420,11 +427,11 @@ def generate_test_report(test_names, output, original_name):
           #content ul li .status {{
             color: #1d9d01; /* 默认为通过颜色 */
           }}
-          
+
           #content ul li.failed .status {{
             color: #ff0000; /* 失败状态为红色 */
           }}
-          
+
           /* 确保错误堆栈正确显示 */
           .error-stack {{
             margin-left: 20px;
@@ -438,7 +445,7 @@ def generate_test_report(test_names, output, original_name):
             color: #333;
             display: block; /* 确保显示 */
           }}
-          
+
           /* 添加控制按钮样式 */
           .controls {{
             margin: 10px 0;
@@ -447,7 +454,7 @@ def generate_test_report(test_names, output, original_name):
             border-radius: 4px;
             text-align: center;
           }}
-          
+
           .controls button {{
             margin: 0 5px;
             padding: 5px 10px;
@@ -458,7 +465,7 @@ def generate_test_report(test_names, output, original_name):
             cursor: pointer;
             font-size: 14px;
           }}
-          
+
           .controls button:hover {{
             background-color: #45a049;
           }}
@@ -470,10 +477,10 @@ def generate_test_report(test_names, output, original_name):
             document.getElementById('expandAllBtn').addEventListener('click', expandAll);
             document.getElementById('collapseAllBtn').addEventListener('click', collapseAll);
             document.getElementById('expandFailedBtn').addEventListener('click', expandFailed);
-            
+
             // 初始展开所有测试结果
             expandAll();
-            
+
             // 确保内容区域正好显示在标题栏下方
             var header = document.getElementById('header');
             var content = document.getElementById('content');
@@ -481,7 +488,7 @@ def generate_test_report(test_names, output, original_name):
                 content.style.paddingTop = (header.offsetHeight + 10) + 'px';
             }}
         }});
-        
+
         // 切换测试结果显示/隐藏
         function toggleTest(element) {{
             var parent = element.parentNode;
@@ -516,13 +523,13 @@ def generate_test_report(test_names, output, original_name):
                 }}
             }}
         }}
-        
+
         // 只展开失败的测试
         function expandFailed() {{
             console.log("只展开失败项被点击");
             // 先折叠所有
             collapseAll();
-            
+
             // 然后展开失败的
             var failedElements = document.getElementsByClassName('failed');
             for (var i = 0; i < failedElements.length; i++) {{
