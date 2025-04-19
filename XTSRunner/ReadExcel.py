@@ -1,0 +1,127 @@
+import os
+import sys
+import pandas as pd
+
+from config import EXCEL_FILE_PATH
+
+def read_libraries_from_excel(library_name=None):
+    """从Excel文件中读取库列表"""
+    try:
+        # 检查Excel文件是否存在
+        if not os.path.exists(EXCEL_FILE_PATH):
+            print(f"错误：找不到Excel文件 {EXCEL_FILE_PATH}")
+            sys.exit(1)
+
+        # 读取Excel文件
+        df = pd.read_excel(EXCEL_FILE_PATH, sheet_name=0)
+
+        # 检查是否有"三方库名称"列
+        if "三方库名称" not in df.columns:
+            print("错误：Excel文件中没有'三方库名称'列")
+            sys.exit(1)
+            
+        # 检查是否有"URL"列
+        if "URL" not in df.columns:
+            print("错误：Excel文件中没有'URL'列")
+            sys.exit(1)
+
+        # 提取三方库名称列和URL列的数据
+        libraries = []
+        urls = {}
+        
+        for index, row in df.iterrows():
+            lib_name = row["三方库名称"]
+            url = row["URL"]
+            if pd.notna(lib_name) and pd.notna(url):
+                libraries.append(lib_name)
+                urls[lib_name] = url
+
+        if not libraries:
+            print("警告：Excel文件中没有找到任何库")
+            sys.exit(1)
+
+        # 如果没有指定库名，使用第一个库名
+        component_name = library_name if library_name else libraries[0]
+
+        print(f"从Excel文件中读取到{len(libraries)}个库")
+        # 返回库列表、当前处理的组件名和URL字典
+        return libraries, component_name, urls
+
+    except Exception as e:
+        print(f"读取Excel文件出错: {str(e)}")
+        sys.exit(1)
+
+def parse_git_url(url):
+    """
+    解析Git URL，提取owner、name和sub_dir
+    
+    例如：
+    - https://gitcode.com/openharmony-tpc/commonmark
+      owner: openharmony-tpc, name: commonmark, sub_dir: ""
+    - https://gitcode.com/openharmony-tpc/openharmony_tpc_samples/tree/master/GSYVideoPlayer-filters
+      owner: openharmony-tpc, name: openharmony_tpc_samples, sub_dir: GSYVideoPlayer-filters
+    """
+    try:
+        # 确保URL是字符串
+        if not isinstance(url, str):
+            return None, None, None
+            
+        # 移除URL末尾的斜杠（如果有）
+        url = url.rstrip('/')
+        
+        # 分割URL以提取路径部分
+        parts = url.split('/')
+        
+        # 确保URL格式正确
+        if len(parts) < 5:
+            print(f"警告：URL格式不正确 - {url}")
+            return None, None, None
+            
+        # 提取owner和name
+        owner = parts[3]
+        name = parts[4]
+        
+        # 检查是否有子目录
+        sub_dir = ""
+        if len(parts) > 5 and "tree" in parts:
+            # 找到"tree"的索引
+            tree_index = parts.index("tree")
+            # 子目录是"tree/branch"之后的所有部分
+            if tree_index + 2 < len(parts):
+                sub_dir = '/'.join(parts[tree_index+2:])
+        
+        return owner, name, sub_dir
+        
+    except Exception as e:
+        print(f"解析Git URL出错: {str(e)}")
+        return None, None, None
+
+def get_repo_info(library_name):
+    """
+    获取指定库的仓库信息
+    
+    返回：
+    - owner: 仓库所有者
+    - name: 仓库名称
+    - sub_dir: 子目录（如果有）
+    """
+    try:
+        # 获取库列表和URL字典
+        _, _, urls = read_libraries_from_excel()
+        
+        # 检查指定的库是否存在
+        if library_name not in urls:
+            print(f"错误：找不到库 {library_name} 的URL信息")
+            return None, None, None
+            
+        # 获取库的URL
+        url = urls[library_name]
+        
+        # 解析URL
+        owner, name, sub_dir = parse_git_url(url)
+        
+        return owner, name, sub_dir
+        
+    except Exception as e:
+        print(f"获取仓库信息出错: {str(e)}")
+        return None, None, None

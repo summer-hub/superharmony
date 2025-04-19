@@ -1,0 +1,75 @@
+{
+  "summary": {
+    "total": 7,
+    "passed": 3,
+    "failed": 4,
+    "error": 0,
+    "ignored": 0,
+    "total_time_ms": 32301
+  },
+  "class_times": {
+    "ActsAbilityTest": 1,
+    "mqttAsyncClientTest": 32295,
+    "publishTest": 5
+  },
+  "test_results": {
+    "ActsAbilityTest": {
+      "suite_time_ms": 1,
+      "tests": [
+        {
+          "name": "assertContain",
+          "status": "passed",
+          "time": "1ms",
+          "time_ms": 1
+        }
+      ]
+    },
+    "mqttAsyncClientTest": {
+      "suite_time_ms": 32295,
+      "tests": [
+        {
+          "name": "mqttAsyncClient",
+          "status": "passed",
+          "time": "7198ms",
+          "time_ms": 7198
+        },
+        {
+          "name": "mqttAsyncClient_Multi_instance",
+          "status": "failed",
+          "time": "15006ms",
+          "time_ms": 15006
+        },
+        {
+          "name": "mqttAsyncClientPromise",
+          "status": "passed",
+          "time": "10088ms",
+          "time_ms": 10088
+        },
+        {
+          "name": "mqttAsyncClient_SSL",
+          "status": "failed",
+          "time": "3ms",
+          "time_ms": 3
+        }
+      ]
+    },
+    "publishTest": {
+      "suite_time_ms": 5,
+      "tests": [
+        {
+          "name": "publishTest1",
+          "status": "failed",
+          "time": "3ms",
+          "time_ms": 3
+        },
+        {
+          "name": "publishTest1__Multi_instance",
+          "status": "failed",
+          "time": "2ms",
+          "time_ms": 2
+        }
+      ]
+    }
+  },
+  "total_time_ms": "32301ms"
+}
