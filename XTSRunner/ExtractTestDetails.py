@@ -180,11 +180,6 @@ def extract_test_details(output_text):
     
     summary["total_time_ms"] = total_time
     
-    # 创建测试类耗时字典，同样使用get方法安全地获取classes
-    # 删除这一行，避免重复定义
-    # class_times = {class_name: class_data.get("suite_consuming", 0) 
-    #              for class_name, class_data in test_data.get("classes", {}).items()}
-    
     # 创建测试类耗时字典，确保从test_data中正确提取suite_consuming值
     class_times = {}
     for class_name, class_data in test_data.get("classes", {}).items():
@@ -198,8 +193,13 @@ def extract_test_details(output_text):
             total_class_time = sum(test.get('time_ms', 0) for test in tests)
             class_times[class_name] = total_class_time
             print(f"计算测试类 {class_name} 的总耗时: {total_class_time}ms")
-    
-    return test_results, summary, class_times
+
+    # 返回一个统一的字典
+    return {
+        "test_results": test_results,
+        "summary": summary,
+        "class_times": class_times
+    }
 
 def display_test_details(test_results, summary, class_times):
     """
@@ -210,7 +210,16 @@ def display_test_details(test_results, summary, class_times):
         summary: 测试摘要信息
         class_times: 测试类耗时字典
     """
-    print(f"✓ Test Results {summary['total_time_ms']}ms")
+    from colorama import Fore, init
+    
+    # 初始化colorama
+    init()
+    
+    print("\n" + "=" * 50)
+    print(Fore.CYAN + "测试结果摘要:" + Fore.RESET)
+    print("=" * 50)
+    
+    print(Fore.CYAN + f"[PASS] Test Results {summary['total_time_ms']}ms" + Fore.RESET)
     
     for test_class, tests in test_results.items():
         # 获取测试类的总耗时
@@ -218,23 +227,25 @@ def display_test_details(test_results, summary, class_times):
         
         # 检查测试类是否全部通过
         class_passed = all(test.get('status') == 'passed' for test in tests)
-        class_icon = "✓" if class_passed else "✗"
+        class_icon = Fore.GREEN + "[PASS]" if class_passed else Fore.RED + "[FAIL]"
         
-        print(f"  {class_icon} {test_class}    {class_time_ms}ms")
+        print(f"  {class_icon} {test_class}    {class_time_ms}ms{Fore.RESET}")
         
         # 显示每个测试方法
         for test in tests:
             status = test.get('status')
-            icon = "✓" if status == 'passed' else "✗"
+            icon = Fore.GREEN + "[PASS]" if status == 'passed' else Fore.RED + "[FAIL]"
             time_str = test.get('time', '0ms')
             
-            print(f"\t{icon} {test.get('name')}    {time_str}")
+            print(f"    {icon} {test.get('name')}{Fore.RESET}    {time_str}")
             
             # 如果有错误信息，显示错误信息
             if 'error_stack' in test and test['error_stack']:
-                print(f"\t\t✗ {test['error_stack']}")
+                print(f"      {Fore.RED}Error: {test['error_stack']}{Fore.RESET}")
     
+    print("=" * 50)
     print(f"总计: {summary['passed']}/{summary['total']} 测试通过")
+    print("=" * 50 + "\n")
 
 def save_test_json(test_results, summary, class_times, output_file="test_results.json"):
     """
@@ -269,7 +280,7 @@ def save_test_json(test_results, summary, class_times, output_file="test_results
     
     # 保存为JSON文件
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump(data, f, indent=2, ensure_ascii=False) # type: ignore
     
     print(f"测试结果已保存到 {output_file}")
 
@@ -279,13 +290,18 @@ def main():
     try:
         with open("d:\\code\\JavaProject\\XTSRunner\\XTS.txt", "r", encoding="utf-8") as f:
             output_text = f.read()
-        
+
         # 提取测试详情
-        test_results, summary, class_times = extract_test_details(output_text)
-        
+        extracted_data = extract_test_details(output_text)
+
+        # 从返回的字典中解包各个部分
+        test_results = extracted_data["test_results"]
+        summary = extracted_data["summary"]
+        class_times = extracted_data["class_times"]
+
         # 保存测试结果为JSON文件（可选）
         save_test_json(test_results, summary, class_times, "d:\\code\\JavaProject\\XTSRunner\\test_results.json")
-        
+
         # 显示测试详情
         display_test_details(test_results, summary, class_times)
     except Exception as e:

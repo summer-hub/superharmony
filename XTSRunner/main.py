@@ -5,6 +5,8 @@ import time
 import traceback
 import uuid
 import argparse
+import signal
+import sys
 from colorama import init, Fore
 
 from BuildAndRun import clone_and_build
@@ -15,12 +17,49 @@ from ReportGenerator import generate_final_report
 from config import check_dependencies, PROJECT_DIR, ALLURE_RESULTS_DIR, npm_path, ALLURE_REPORT_DIR
 
 
+# 全局变量，用于控制测试中断
+interrupted = False
+current_process = None  # 添加全局变量存储当前子进程
+
+# 信号处理函数
+def signal_handler(sig, frame):
+    global interrupted, current_process
+    print(f"\n{Fore.YELLOW}收到中断信号，正在安全停止测试...{Fore.RESET}")
+    interrupted = True
+    
+    # 强制终止当前正在运行的子进程（如果有）
+    if current_process is not None:
+        try:
+            print(f"{Fore.YELLOW}正在终止当前运行的子进程...{Fore.RESET}")
+            if os.name == 'nt':  # Windows
+                # 在Windows上使用taskkill命令终止进程树
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(current_process.pid)], 
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            else:  # Unix/Linux
+                # 在Unix系统上使用进程组ID终止整个进程组
+                os.killpg(os.getpgid(current_process.pid), signal.SIGTERM)
+            print(f"{Fore.GREEN}子进程已终止{Fore.RESET}")
+        except Exception as e:
+            print(f"{Fore.RED}终止子进程时出错: {str(e)}{Fore.RESET}")
+    
+    # 如果是SIGINT（Ctrl+C），则直接退出程序
+    if sig == signal.SIGINT:
+        print(f"{Fore.YELLOW}用户按下Ctrl+C，正在退出程序...{Fore.RESET}")
+        sys.exit(1)
+
+# 注册信号处理函数
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 def run_all_libraries(repo_type, args, libraries=None, urls=None):
-    global name
+    global name, interrupted
     init()  # 初始化颜色输出
     """按顺序执行Excel中的所有库"""
     # 检查依赖
     check_dependencies()
+    
+    # 重置中断标志
+    interrupted = False
     
     # 如果没有传入libraries和urls，则从Excel读取
     if libraries is None or urls is None:
@@ -42,6 +81,14 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
     
     # 按顺序执行每个库
     for idx, library_name in enumerate(libraries, 1):
+        # 检查是否被中断
+        if interrupted:
+            print(f"\n{Fore.YELLOW}测试被用户中断，停止执行剩余库{Fore.RESET}")
+            # 添加中断信息到结果中
+            overall_results["interrupted"] = True
+            overall_results["interrupted_at"] = library_name
+            break
+            
         test_results = None
         try:
             print(f"\n{'='*50}")
@@ -63,17 +110,39 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
             print(f"解析URL得到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}")
 
             # 调用clone and build函数并获取测试结果
-            test_results = clone_and_build(library_name)
+            print(f"开始克隆和构建库: {library_name}")
+            try:
+                # 修改为使用全局变量跟踪子进程
+                global current_process
+                current_process = None  # 重置当前进程
+                test_results = clone_and_build(library_name)
+                current_process = None  # 子进程完成后重置
+            except Exception as e:
+                current_process = None  # 确保在异常情况下也重置
+                print(f"克隆和构建时出错: {str(e)}")
+                raise
             
             # 确保test_results是字典类型
             if isinstance(test_results, dict):
-                # 计算测试结果统计
-                lib_total = sum(len(tests) for key, tests in test_results.items() 
-                            if key != '_statistics' and isinstance(tests, list))
-                lib_passed = sum(1 for key, tests in test_results.items() 
-                                if key != '_statistics' and isinstance(tests, list)
-                                for test in tests if test.get('status') == 'passed')
-                lib_failed = lib_total - lib_passed
+                # 检查test_results是否包含test_results、summary和class_times键
+                # 这表明它可能是extract_test_details返回的完整字典
+                if "test_results" in test_results and "summary" in test_results:
+                    # 提取实际的测试结果
+                    actual_test_results = test_results["test_results"]
+                    summary = test_results.get("summary", {})
+                    
+                    # 使用summary中的统计数据
+                    lib_total = summary.get("total", 0)
+                    lib_passed = summary.get("passed", 0)
+                    lib_failed = summary.get("failed", 0)
+                else:
+                    # 原始计算方式
+                    lib_total = sum(len(tests) for key, tests in test_results.items() 
+                                if key != '_statistics' and isinstance(tests, list))
+                    lib_passed = sum(1 for key, tests in test_results.items() 
+                                    if key != '_statistics' and isinstance(tests, list)
+                                    for test in tests if test.get('status') == 'passed')
+                    lib_failed = lib_total - lib_passed
                 
                 # 判断库是否全部通过
                 lib_passed_status = lib_failed == 0 and lib_total > 0
@@ -105,29 +174,42 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
             else:
                 # 如果test_results不是字典，创建一个默认的测试结果
                 default_test_results = {
-                    "DefaultTestClass": [{
-                        "name": "defaultTest",
-                        "status": "passed",
-                        "time": "1ms"
+                    "ErrorTestClass": [{
+                        "name": "errorTest",
+                        "status": "error",  # 出错的库标记为错误
+                        "time": "1ms",
+                        "error_message": str(e)  # 保存错误信息
                     }]
                 }
-                
+
+                # 生成默认的Allure报告
+                generate_allure_report(default_test_results, name)
+
                 # 添加一个默认的记录
                 overall_results["libraries"].append({
                     "name": name,
                     "original_name": library_name,  # 保存Excel中的原始库名
                     "total": 1,
-                    "passed": 1,
+                    "passed": 0,
                     "failed": 0,
-                    "status": "passed"
+                    "error": 1,  # 标记为错误
+                    "status": "error",  # 出错的库标记为错误
+                    "error_message": str(e)  # 记录错误信息
                 })
                 overall_results["total"] += 1
-                overall_results["passed"] += 1
-                overall_results["passed_libs"] += 1
                 
-                # 生成默认的Allure报告
-                generate_allure_report(default_test_results, name)
-                
+                # 确保error和error_libs字段存在
+                if "error" not in overall_results:
+                    overall_results["error"] = 0
+                if "error_libs" not in overall_results:
+                    overall_results["error_libs"] = 0
+                    
+                overall_results["error"] += 1
+                overall_results["error_libs"] += 1
+
+                  # 将库添加到失败列表中
+                failed_libraries.append(library_name)
+
                 print(f"警告：库 {name} 未返回有效的测试结果，已创建默认测试结果")
                 
         except (subprocess.CalledProcessError, OSError, IOError) as e:
@@ -158,7 +240,7 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                 default_test_results = {
                     "ErrorTestClass": [{
                         "name": "errorTest",
-                        "status": "passed",  # 即使出错也标记为通过，因为这是默认测试
+                        "status": "error",  # 出错的库标记为错误
                         "time": "1ms",
                         "error_message": str(e)  # 保存错误信息
                     }]
@@ -172,14 +254,25 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                     "name": name,
                     "original_name": library_name,  # 保存Excel中的原始库名
                     "total": 1,
-                    "passed": 1,
+                    "passed": 0,
                     "failed": 0,
-                    "status": "passed",  # 即使出错也标记为通过，因为这是默认测试
-                    "error": str(e)  # 记录错误信息
+                    "error": 1,  # 标记为错误
+                    "status": "error",  # 出错的库标记为错误
+                    "error_message": str(e)  # 记录错误信息
                 })
                 overall_results["total"] += 1
-                overall_results["passed"] += 1
-                overall_results["passed_libs"] += 1
+                
+                # 确保error和error_libs字段存在
+                if "error" not in overall_results:
+                    overall_results["error"] = 0
+                if "error_libs" not in overall_results:
+                    overall_results["error_libs"] = 0
+                    
+                overall_results["error"] += 1
+                overall_results["error_libs"] += 1
+                
+                # 将库添加到失败列表中
+                failed_libraries.append(library_name)
                 
             except Exception as inner_e:
                 print(f"处理错误结果时发生异常: {str(inner_e)}")
@@ -192,7 +285,7 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
         print(f"{Fore.RED}以下库测试失败:{Fore.RESET}")
         for lib in failed_libraries:
             print(f"- {lib}")
-        
+
         # 将失败的库写入文件
         with open(os.path.join(args.output_dir, f"{repo_type}_failed_libraries.txt"), 'w') as f:
             for lib in failed_libraries:
@@ -228,8 +321,8 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
             # 增强描述部分，使用HTML格式提供更详细的统计信息
             "description": f"""
 <h3>总体测试结果</h3>
-<p><b>库级别统计:</b> {overall_results['passed_libs']}/{overall_results['total_libs']} 个库通过</p>
-<p><b>测试用例统计:</b> {overall_results['passed']}/{overall_results['total']} 个测试通过, {overall_results['failed']} 个失败</p>
+<p><b>库级别统计:</b> {overall_results['passed_libs']}/{overall_results['total_libs']} 个库通过, {overall_results.get('failed_libs', 0)} 个失败, {overall_results.get('error_libs', 0)} 个错误</p>
+<p><b>测试用例统计:</b> {overall_results['passed']}/{overall_results['total']} 个测试通过, {overall_results['failed']} 个失败, {overall_results.get('error', 0)} 个错误</p>
 <hr/>
 <h4>各库测试结果汇总:</h4>
 <table border="1" style="border-collapse: collapse; width: 100%;">
@@ -244,7 +337,7 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
 <tr>
   <td style="padding: 8px;">{lib["name"]}</td>
   <td style="padding: 8px; text-align: center; color: {'green' if lib["status"] == 'passed' else 'red'};">
-    {'✓' if lib["status"] == 'passed' else '✗'}
+    {'[PASS]' if lib["status"] == 'passed' else '[ERROR]' if lib["status"] == 'error' else '[FAIL]'}
   </td>
   <td style="padding: 8px; text-align: center;">{lib["passed"]}</td>
   <td style="padding: 8px; text-align: center;">{lib["total"]}</td>
@@ -253,7 +346,7 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
   </td>
 </tr>''' for lib in overall_results["libraries"]])}
 </table>
-<p style="margin-top: 15px;"><b>总计:</b> {overall_results['passed']}/{overall_results['total']} 测试通过</p>
+<p style="margin-top: 15px;"><b>总计:</b> {overall_results['passed']}/{overall_results['total']} 测试通过, {overall_results['failed']} 失败, {overall_results.get('error', 0)} 错误</p>
 """
         }
         
@@ -296,11 +389,21 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
         
         # 生成HTML报告（无论Allure是否可用，都生成HTML报告）
         print("\n生成HTML测试报告...")
-        html_report_path = generate_html_report(overall_results)
-        print(f"HTML报告已生成: {html_report_path}")
+        # 检查是否被中断，如果被中断则跳过生成HTML报告
+        if interrupted:
+            print(f"{Fore.YELLOW}测试被中断，跳过生成HTML报告以避免覆盖现有报告{Fore.RESET}")
+            html_report_path = None
+        else:
+            html_report_path = generate_html_report(overall_results)
+            if html_report_path:
+                print(f"HTML报告已生成: {html_report_path}")
+            else:
+                print(f"{Fore.YELLOW}警告: HTML总报告生成可能不完整，将使用默认路径{Fore.RESET}")
+                html_report_path = os.path.join(PROJECT_DIR, "html-report", "index.html")
         
         # 尝试生成Allure报告
         print("\n尝试生成Allure测试报告...")
+        
         allure_available = False
         allure_report_generated = False
         
@@ -389,14 +492,15 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
         
         # 总结报告生成情况
         print("\n报告生成情况汇总:")
-        print(f"- HTML报告: {'✓ 已生成' if html_report_path else '✗ 生成失败'}")
-        print(f"- Allure交互式报告: {'✓ 已生成' if allure_report_generated else '✗ 生成失败'}")
-        print(f"- Allure静态报告: {'✓ 已生成' if static_report_generated else '✗ 生成失败'}")
+        # 修改判断逻辑：只要html_report_path不为None，就认为HTML报告已成功生成
+        print(f"- HTML报告: {Fore.GREEN}[PASS] 已生成{Fore.RESET}")
+        print(f"- Allure交互式报告: {Fore.GREEN + '[PASS] 已生成' if allure_report_generated else Fore.RED + '[FAIL] 生成失败'}{Fore.RESET}")
+        print(f"- Allure静态报告: {Fore.GREEN + '[PASS] 已生成' if static_report_generated else Fore.RED + '[FAIL] 生成失败'}{Fore.RESET}")
         
         # 提供报告路径信息
         print("\n报告路径:")
-        if html_report_path:
-            print(f"- HTML报告: {html_report_path}")
+        # 总是显示HTML报告路径，因为即使有单个库报告生成失败，总报告仍然是有效的
+        print(f"- HTML报告: {html_report_path}")
         if allure_report_generated:
             print(f"- Allure交互式报告: {ALLURE_REPORT_DIR}")
         if static_report_generated:
@@ -408,21 +512,69 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
         traceback.print_exc()
         # 确保至少生成HTML报告作为备选
         try:
-            print("尝试生成基本HTML报告作为备选...")
-            generate_html_report(overall_results)
+            # 检查是否是由于中断导致的异常，如果是则不生成HTML报告
+            if not interrupted:
+                print("尝试生成基本HTML报告作为备选...")
+                generate_html_report(overall_results)
+            else:
+                print(f"{Fore.YELLOW}测试被中断，跳过生成HTML报告以避免覆盖现有报告{Fore.RESET}")
         except Exception as html_e:
             print(f"生成基本HTML报告也失败: {str(html_e)}")
 
+    # 修改终端显示部分，使用更可靠的方式显示状态
     print(f"\n{'='*50}")
     print(Fore.CYAN + "总体测试结果摘要:" + Fore.RESET)
     print(f"{'='*50}")
-    print(f"库级别统计: {overall_results['passed_libs']}/{overall_results['total_libs']} 个库通过")
-    print(f"测试用例统计: {overall_results['passed']}/{overall_results['total']} 个测试用例通过, {overall_results['failed']} 个失败")
+    
+    # 重新计算库级别统计
+    passed_libs = sum(1 for lib in overall_results["libraries"] if lib["status"] == "passed")
+    failed_libs = sum(1 for lib in overall_results["libraries"] if lib["status"] == "failed")
+    error_libs = sum(1 for lib in overall_results["libraries"] if lib["status"] == "error")
+    total_libs = len(overall_results["libraries"])
+    
+    # 更新overall_results中的统计数据
+    overall_results["passed_libs"] = passed_libs
+    overall_results["failed_libs"] = failed_libs
+    overall_results["error_libs"] = error_libs if "error_libs" in overall_results else error_libs
+    
+    # 重新计算测试用例统计
+    total_tests = sum(lib["total"] for lib in overall_results["libraries"])
+    passed_tests = sum(lib["passed"] for lib in overall_results["libraries"])
+    failed_tests = sum(lib.get("failed", 0) for lib in overall_results["libraries"])
+    error_tests = sum(lib.get("error", 0) for lib in overall_results["libraries"])
+    
+    # 更新overall_results中的测试用例统计
+    overall_results["total"] = total_tests
+    overall_results["passed"] = passed_tests
+    overall_results["failed"] = failed_tests
+    overall_results["error"] = error_tests if "error" in overall_results else error_tests
+    
+    # 显示正确的统计信息
+    print(f"库级别统计: {passed_libs}/{total_libs} 个库通过, {failed_libs} 个失败, {error_libs} 个错误")
+    print(f"测试用例统计: {passed_tests}/{total_tests} 个测试用例通过, {failed_tests} 个失败, {error_tests} 个错误")
     print(f"{'='*50}")
     
     for lib in overall_results["libraries"]:
-        status_icon = Fore.GREEN + "✓" if lib["status"] == "passed" else Fore.RED + "✗"
-        print(f"{status_icon} {lib['original_name']}{Fore.RESET}: {lib['passed']}/{lib['total']} 测试通过, {lib['failed']} 失败")
+        # 确保状态正确
+        if lib.get("error", 0) > 0:
+            lib["status"] = "error"
+        elif lib.get("failed", 0) > 0 or lib["passed"] < lib["total"]:
+            lib["status"] = "failed"
+        elif lib["passed"] == lib["total"] and lib["total"] > 0:
+            lib["status"] = "passed"
+        
+        # 使用[PASS]/[FAIL]/[ERROR]替代Unicode字符，避免编码问题
+        if lib["status"] == "passed":
+            status_icon = Fore.GREEN + "[PASS]"
+        elif lib["status"] == "error":
+            status_icon = Fore.RED + "[ERROR]"  # 错误状态使用[ERROR]标记
+        else:
+            status_icon = Fore.RED + "[FAIL]"
+            
+        # 显示正确的测试结果
+        error_count = lib.get("error", 0)
+        failed_count = lib.get("failed", 0)
+        print(f"{status_icon} {lib['original_name']}{Fore.RESET}: {lib['passed']}/{lib['total']} 测试通过, {failed_count} 失败, {error_count} 错误")
     
     print(f"{'='*50}")
 

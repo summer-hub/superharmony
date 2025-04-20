@@ -2,13 +2,29 @@ import os
 import time
 import json
 from collections import defaultdict
+import colorama  # 添加彩色输出支持
+
+# 初始化colorama
+colorama.init()
 
 from config import PROJECT_DIR
 from ReadExcel import read_libraries_from_excel, parse_git_url
 
-
 # 保存总体结果的文件路径
 OVERALL_RESULTS_FILE = os.path.join(PROJECT_DIR, "html-report", "overall_results.json")
+
+# 定义彩色输出函数
+def print_error(message):
+    """打印红色错误信息"""
+    print(f"{colorama.Fore.RED}{message}{colorama.Style.RESET_ALL}")
+
+def print_warning(message):
+    """打印黄色警告信息"""
+    print(f"{colorama.Fore.YELLOW}{message}{colorama.Style.RESET_ALL}")
+
+def print_success(message):
+    """打印绿色成功信息"""
+    print(f"{colorama.Fore.GREEN}{message}{colorama.Style.RESET_ALL}")
 
 def update_overall_results(overall_results):
     """更新总体结果文件"""
@@ -23,7 +39,7 @@ def update_overall_results(overall_results):
             json.dump(overall_results, f, ensure_ascii=False, indent=2) # type: ignore
             
     except Exception as e:
-        print(f"更新总体结果文件时出错: {str(e)}")
+        print_error(f"更新总体结果文件时出错: {str(e)}")
 
 def generate_html_report(overall_results):
     """生成详细的HTML测试报告"""
@@ -58,26 +74,51 @@ def generate_html_report(overall_results):
         
         # 生成每个库的单独报告
         for lib in overall_results.get("libraries", []):
-            lib_name = lib.get("name", "")
-            lib_report_path = generate_library_report(lib, lib_name, urls.get(lib_name, ""), html_report_dir)
-            # 添加报告路径到库信息中
-            lib["report_path"] = os.path.relpath(lib_report_path, html_report_dir)
+            try:
+                lib_name = lib.get("name", "")
+                if not lib_name:
+                    print_warning("警告: 发现没有名称的库，跳过生成报告")
+                    continue
+                    
+                lib_report_path = generate_library_report(lib, lib_name, urls.get(lib_name, ""), html_report_dir)
+                
+                # 只有当报告路径有效时才添加到库信息中
+                if lib_report_path:
+                    lib["report_path"] = os.path.relpath(lib_report_path, html_report_dir)
+                else:
+                    print_warning(f"警告: 库 {lib_name} 的报告生成失败，跳过添加报告路径")
+            except Exception as e:
+                print_error(f"处理库 {lib.get('name', '未知库')} 报告时出错: {str(e)}")
+                # 继续处理下一个库，不中断整体报告生成
         
         # 生成总体报告
-        main_report_path = generate_main_report(overall_results, repo_groups, current_time, html_report_dir)
-        
-        print(f"HTML报告已生成: {main_report_path}")
-        return main_report_path
+        try:
+            main_report_path = generate_main_report(overall_results, repo_groups, current_time, html_report_dir)
+            if main_report_path:
+                print_success(f"HTML报告已生成: {main_report_path}")
+                return main_report_path
+            else:
+                default_path = os.path.join(html_report_dir, "index.html")
+                print_warning(f"主报告生成可能不完整，使用默认路径: {default_path}")
+                return default_path
+        except Exception as e:
+            print_error(f"生成主报告时出错: {str(e)}")
+            # 返回默认报告路径，即使生成失败
+            return os.path.join(html_report_dir, "index.html")
         
     except Exception as e:
-        print(f"生成HTML报告时出错: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print_error(f"生成HTML报告时出错: {str(e)}")
+        # 不打印完整的堆栈跟踪，只显示简单的错误信息
         return None
 
 def generate_library_report(lib, lib_name, url, html_report_dir):
     """为单个库生成HTML报告"""
     try:
+        # 类型检查
+        if not isinstance(lib, dict):
+            print_error(f"错误: 库 {lib_name} 的数据不是有效的字典格式")
+            return None
+            
         # 创建库报告目录
         lib_dir = os.path.join(html_report_dir, "libraries")
         if not os.path.exists(lib_dir):
@@ -105,65 +146,89 @@ def generate_library_report(lib, lib_name, url, html_report_dir):
         # 生成测试类级别的HTML内容
         test_classes_html = ""
         if "test_results" in lib:
-            for test_class, tests in lib["test_results"].items():
-                class_passed = all(test.get('status') == 'passed' for test in tests)
-                class_status = "passed" if class_passed else "failed"
-                class_status_icon = "✓" if class_passed else "✗"
-                
-                # 计算测试类的总执行时间
-                class_time_ms = sum(int(test.get('time', '0 ms').replace('ms', '').strip()) for test in tests)
-                
-                # 生成测试方法级别的HTML内容
-                test_methods_html = ""
-                for test in tests:
-                    test_name = test.get('name', 'unknown')
-                    test_status = test.get('status', 'unknown')
-                    test_time = test.get('time', '0ms')
-                    test_status_icon = "✓" if test_status == "passed" else "✗"
-                    test_status_class = "passed" if test_status == "passed" else "failed"
-                    
-                    # 添加错误信息（如果有）
-                    error_html = ""
-                    if 'error_stack' in test and test['error_stack']:
-                        error_html = f"""
-                        <div class="error-details">
-                            <pre>{test['error_stack']}</pre>
+            # 确保test_results是字典类型
+            if not isinstance(lib["test_results"], dict):
+                print_error(f"错误: 库 {lib_name} 的测试结果不是有效的字典格式")
+                # 创建一个空的测试结果部分
+                test_classes_html = "<p>无有效的测试结果数据</p>"
+            else:
+                for test_class, tests in lib["test_results"].items():
+                    try:
+                        class_passed = all(test.get('status') == 'passed' for test in tests if isinstance(test, dict))
+                        class_status = "passed" if class_passed else "failed"
+                        class_status_icon = "✓" if class_passed else "✗"
+                        
+                        # 计算测试类的总执行时间，增加错误处理
+                        class_time_ms = 0
+                        for test in tests:
+                            if not isinstance(test, dict):
+                                continue
+                            test_time_str = test.get('time', '0 ms')
+                            if isinstance(test_time_str, str):
+                                try:
+                                    time_value = test_time_str.replace('ms', '').strip()
+                                    class_time_ms += int(time_value)
+                                except (ValueError, TypeError):
+                                    # 忽略无法解析的时间值
+                                    pass
+                        
+                        # 生成测试方法级别的HTML内容
+                        test_methods_html = ""
+                        for test in tests:
+                            if not isinstance(test, dict):
+                                continue
+                                
+                            test_name = test.get('name', 'unknown')
+                            test_status = test.get('status', 'unknown')
+                            test_time = test.get('time', '0ms')
+                            test_status_icon = "✓" if test_status == "passed" else "✗"
+                            test_status_class = "passed" if test_status == "passed" else "failed"
+                            
+                            # 添加错误信息（如果有）
+                            error_html = ""
+                            if 'error_stack' in test and test['error_stack']:
+                                error_html = f"""
+                                <div class="error-details">
+                                    <pre>{test['error_stack']}</pre>
+                                </div>
+                                """
+                            
+                            test_methods_html += f"""
+                            <tr class="{test_status_class}">
+                                <td><span class="status-icon">{test_status_icon}</span> {test_name}</td>
+                                <td>{test_status}</td>
+                                <td>{test_time}</td>
+                            </tr>
+                            {error_html}
+                            """
+                        
+                        # 添加测试类信息
+                        test_classes_html += f"""
+                        <div class="test-class {class_status}">
+                            <div class="test-class-header" onclick="toggleTestClass(this)">
+                                <span class="status-icon">{class_status_icon}</span>
+                                <span class="test-class-name">{test_class}</span>
+                                <span class="test-class-time">{class_time_ms} ms</span>
+                            </div>
+                            <div class="test-methods">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>测试方法</th>
+                                            <th>状态</th>
+                                            <th>耗时</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {test_methods_html}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                         """
-                    
-                    test_methods_html += f"""
-                    <tr class="{test_status_class}">
-                        <td><span class="status-icon">{test_status_icon}</span> {test_name}</td>
-                        <td>{test_status}</td>
-                        <td>{test_time}</td>
-                    </tr>
-                    {error_html}
-                    """
-                
-                # 添加测试类信息
-                test_classes_html += f"""
-                <div class="test-class {class_status}">
-                    <div class="test-class-header" onclick="toggleTestClass(this)">
-                        <span class="status-icon">{class_status_icon}</span>
-                        <span class="test-class-name">{test_class}</span>
-                        <span class="test-class-time">{class_time_ms} ms</span>
-                    </div>
-                    <div class="test-methods">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>测试方法</th>
-                                    <th>状态</th>
-                                    <th>耗时</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {test_methods_html}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                """
+                    except Exception as e:
+                        print_error(f"处理库 {lib_name} 的测试类 {test_class} 时出错: {str(e)}")
+                        # 继续处理下一个测试类
         
         # 生成库报告HTML
         lib_html = f"""<!DOCTYPE html>
@@ -366,7 +431,7 @@ def generate_library_report(lib, lib_name, url, html_report_dir):
         return lib_report_path
     
     except Exception as e:
-        print(f"生成库报告时出错 ({lib_name}): {str(e)}")
+        print_error(f"生成库报告时出错 ({lib_name}): {str(e)}")
         return None
 
 def generate_main_report(overall_results, repo_groups, current_time, html_report_dir):

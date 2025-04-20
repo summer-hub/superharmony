@@ -26,12 +26,12 @@ SIGNING_CONFIG_SIG = {
     "name": "default",
     "type": "HarmonyOS",
     "material": {
-        "certpath": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_thrift_SNUdGdEm4_e_sD3WVcgiTN_H9x4IrYSdcOrS8IzdwY8=.cer",
+        "certpath": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_thrift_SNUdGdEm4_e_sD3WVcgiTN_H9x4IrYSdcOrS8IzdwY8=.cer",
         "keyAlias": "debugKey",
         "keyPassword": "0000001B371411EB0AECFD686E3CB54E5B29DCF5F17745CC96AA17372191C77FB729309862969EFB1DF6DC",
-        "profile": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_thrift_SNUdGdEm4_e_sD3WVcgiTN_H9x4IrYSdcOrS8IzdwY8=.p7b",
+        "profile": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_thrift_SNUdGdEm4_e_sD3WVcgiTN_H9x4IrYSdcOrS8IzdwY8=.p7b",
         "signAlg": "SHA256withECDSA",
-        "storeFile": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_thrift_SNUdGdEm4_e_sD3WVcgiTN_H9x4IrYSdcOrS8IzdwY8=.p12",
+        "storeFile": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_thrift_SNUdGdEm4_e_sD3WVcgiTN_H9x4IrYSdcOrS8IzdwY8=.p12",
         "storePassword": "0000001BD66CE64CFBBBC7E00EE55E1A3BC65B60DDEF59D04BD0B0DF00F845E89DA81C05113FC17907258F"
     }
 }
@@ -42,12 +42,12 @@ SIGNING_CONFIG_TPC = {
     "name": "default",
     "type": "HarmonyOS",
     "material": {
-        "certpath": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_ohos_mpchart_84LmUC5SeYxhZC7SHANqsLFCw4ZZvNGI2S7yEjGXJxY=.cer",
+        "certpath": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_ohos_mpchart_84LmUC5SeYxhZC7SHANqsLFCw4ZZvNGI2S7yEjGXJxY=.cer",
         "keyAlias": "debugKey",
         "keyPassword": "0000001BC7F25F48FC9488EDBECC66A9E14258FDA62DEAB81385F289C05B0C87BF4FEB2E593CCA1810471E",
-        "profile": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_ohos_mpchart_84LmUC5SeYxhZC7SHANqsLFCw4ZZvNGI2S7yEjGXJxY=.p7b",
+        "profile": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_ohos_mpchart_84LmUC5SeYxhZC7SHANqsLFCw4ZZvNGI2S7yEjGXJxY=.p7b",
         "signAlg": "SHA256withECDSA",
-        "storeFile": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_ohos_mpchart_84LmUC5SeYxhZC7SHANqsLFCw4ZZvNGI2S7yEjGXJxY=.p12",
+        "storeFile": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_ohos_mpchart_84LmUC5SeYxhZC7SHANqsLFCw4ZZvNGI2S7yEjGXJxY=.p12",
         "storePassword": "0000001B0F5990A2CCF8E04D97D9C4DB3FDAE2B50BD8B56326275916CD45C6AECEDCB656342C59411DE6CB"
     }
 }
@@ -58,12 +58,12 @@ SIGNING_CONFIG_SAMPLES = {
     "name": "default",
     "type": "HarmonyOS",
     "material": {
-        "certpath": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_box2d_IkXvxyk9_kPV6wrimrxGH3DN7OeXSVG1pyM1WpsEmMY=.cer",
+        "certpath": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_box2d_IkXvxyk9_kPV6wrimrxGH3DN7OeXSVG1pyM1WpsEmMY=.cer",
         "keyAlias": "debugKey",
         "keyPassword": "0000001BB55D1E6B19391DD65C4CDFF9397E543FA281C2F69F0816D4D342824CA4F606B23D1A556F07CE7A",
-        "profile": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_box2d_IkXvxyk9_kPV6wrimrxGH3DN7OeXSVG1pyM1WpsEmMY=.p7b",
+        "profile": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_box2d_IkXvxyk9_kPV6wrimrxGH3DN7OeXSVG1pyM1WpsEmMY=.p7b",
         "signAlg": "SHA256withECDSA",
-        "storeFile": "D:\\code\\JavaProject\\XTSRunner\\signconfig\\default_box2d_IkXvxyk9_kPV6wrimrxGH3DN7OeXSVG1pyM1WpsEmMY=.p12",
+        "storeFile": "D:\\code\\PycharmProjects\\0419\\XTSRunner\\signconfig\\default_box2d_IkXvxyk9_kPV6wrimrxGH3DN7OeXSVG1pyM1WpsEmMY=.p12",
         "storePassword": "0000001B4F65AB599FF37812A17702EAA5BCAA7DDFE77CA9829C404B1476B44F2F3B87F93B5BBE8922ADEF"
     }
 }

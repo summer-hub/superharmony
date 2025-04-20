@@ -1,5 +1,5 @@
-
-from GenerateTestReport import generate_test_report, parse_test_results
+from ExtractTestDetails import extract_test_details
+from GenerateTestReport import generate_test_report
 from GenerateAllureReport import generate_allure_report
 from GenerateHtmlReport import generate_html_report, update_overall_results
 
@@ -13,25 +13,33 @@ all_libraries_results = {
     "libraries": []
 }
 
+# 回调函数列表，用于通知测试完成
+report_completion_callbacks = []
+
+def register_completion_callback(callback):
+    """注册一个在报告生成完成时调用的回调函数"""
+    if callback not in report_completion_callbacks:
+        report_completion_callbacks.append(callback)
+
 def generate_reports(test_names, output, original_name):
     """
     生成测试报告并更新总体测试结果
-    
+
     该函数为单个库生成测试报告,并将结果整合到总体测试结果中。主要功能包括:
     - 解析测试结果数据
     - 生成HTML格式的详细测试报告
     - 生成Allure测试报告
     - 更新总体测试结果统计
     - 保存库的详细测试信息
-    
+
     参数:
         test_names: 测试用例名称列表
         output: 测试输出结果
         original_name: 被测试库的名称
-    
+
     异常:
         捕获并打印所有异常信息
-    
+
     全局变量:
         all_libraries_results: 存储所有库的测试结果
     """
@@ -47,7 +55,12 @@ def generate_reports(test_names, output, original_name):
                 output = str(output) if output is not None else ""
         
         # 解析测试结果（只需解析一次）
-        test_results, summary, class_times = parse_test_results(test_names, output)
+        extracted_data = extract_test_details(output)
+        
+        # 从返回的字典中提取各个部分
+        test_results = extracted_data["test_results"]
+        summary = extracted_data["summary"]
+        class_times = extracted_data["class_times"]
 
         try:
             # 生成HTML详细报告
@@ -102,6 +115,13 @@ def generate_final_report():
         generate_html_report(all_libraries_results)
         
         print("\n所有测试报告已生成完成")
+        
+        # 调用所有注册的回调函数，通知测试完成
+        for callback in report_completion_callbacks:
+            try:
+                callback()
+            except Exception as callback_err:
+                print(f"执行完成回调时出错: {str(callback_err)}")
         
         # 重置全局变量，为下一次运行做准备
         all_libraries_results = {

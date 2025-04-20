@@ -5,7 +5,8 @@ import re
 import time
 from colorama import  Fore
 
-from GenerateTestReport import parse_test_results, display_test_tree
+from ExtractTestDetails import extract_test_details
+from GenerateTestReport import display_test_tree
 from ModfyConfig import _run_config_scripts
 from ReportGenerator import generate_reports
 from config import PROJECT_DIR, ohpm_path, BUNDLE_NAME_SIG, node_path, hvigor_path
@@ -23,7 +24,10 @@ def clone_and_build(library_name):
         
         if not owner or not name:
             print(f"错误：无法获取库 {library_name} 的仓库信息")
-            return {"ErrorTestClass": [{"name": "errorTest", "status": "passed", "time": "1ms"}]}
+            # 修改为返回error状态
+            return {"test_results": {"ErrorTestClass": [{"name": "errorTest", "status": "error", "time": "1ms", "error_message": "无法获取仓库信息"}]},
+                    "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
+                    "class_times": {"ErrorTestClass": 1}}
             
         print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}")
         
@@ -111,15 +115,21 @@ def clone_and_build(library_name):
         if test_names:
             # 调用run_xts函数执行测试
             output = run_xts(library_name)
-            test_results = parse_test_results(test_names, output)
-            return test_results
+            extracted_data = extract_test_details(output)
+            return extracted_data
         else:
             print(Fore.RED + "未找到可执行的测试用例" + Fore.RESET)
-            return {"DefaultTestClass": [{"name": "defaultTest", "status": "passed", "time": "1ms"}]}
+            # 修改为返回error状态
+            return {"test_results": {"ErrorTestClass": [{"name": "noTestsFound", "status": "error", "time": "1ms", "error_message": "未找到可执行的测试用例"}]},
+                    "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
+                    "class_times": {"ErrorTestClass": 1}}
 
     except subprocess.CalledProcessError as e:
         print(f"执行命令失败: {e}")
-        return {"ErrorTestClass": [{"name": "errorTest", "status": "passed", "time": "1ms"}]}
+        # 修改为返回error状态而非passed状态
+        return {"test_results": {"ErrorTestClass": [{"name": "errorTest", "status": "error", "time": "1ms", "error_message": str(e)}]},
+                "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
+                "class_times": {"ErrorTestClass": 1}}
     finally:
         # Return to original working directory
         os.chdir(PROJECT_DIR)
@@ -393,7 +403,21 @@ def run_xts(library_name=None):
         print(f"测试名称: {test_names}")
         if test_names:
             output = run_in_new_cmd(test_names, original_name)  # 使用original_name
-            display_test_tree(output)
+            
+            # 修改这里，直接传递原始输出字符串，不调用display_test_tree
+            # display_test_tree(output)
+            
+            # 从输出中提取测试结果并显示
+            extracted_data = extract_test_details(output)
+            test_results = extracted_data["test_results"]
+            summary = extracted_data["summary"]
+            class_times = extracted_data["class_times"]
+            
+            # 使用ExtractTestDetails.py中的函数显示测试树
+            from ExtractTestDetails import display_test_details
+            display_test_details(test_results, summary, class_times)
+            
+            return output
         else:
             print(Fore.RED + "未找到可执行的测试用例" + Fore.RESET)
             return ""

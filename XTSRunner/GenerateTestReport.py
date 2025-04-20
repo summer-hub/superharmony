@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import json
 from colorama import Fore
@@ -10,64 +9,19 @@ from ReadExcel import read_libraries_from_excel
 from ExtractTestDetails import extract_test_details
 
 
+# 假设这是GenerateTestReport.py中的display_test_tree函数
 def display_test_tree(output):
-    """在终端中显示树形结构的测试结果"""
-    print("\n" + "=" * 50)
-    print(Fore.CYAN + "测试结果摘要:" + Fore.RESET)
-    print("=" * 50)
-
-    # 确保output是字符串
-    if isinstance(output, tuple):
-        output = output[0] if output and len(output) > 0 else ""
-
-    # 使用ExtractTestDetails.py的解析方法
-    test_results, summary, class_times = extract_test_details(output)
-
-    # 显示测试树
-    print(Fore.CYAN + f"[PASS] Test Results {summary.get('total_time_ms', 0)}ms" + Fore.RESET)
-
-    # 确保测试结果与摘要一致
-    adjust_test_results_to_match_summary(test_results, summary)
-
-    for test_class, tests in test_results.items():
-        # 获取测试类的总耗时
-        class_time_ms = class_times.get(test_class, 0)
-
-        # 检查测试类是否全部通过
-        class_passed = all(test.get('status') == 'passed' for test in tests)
-        class_icon = Fore.GREEN + "[PASS]" if class_passed else Fore.RED + "[FAIL]"
-
-        print(f"  {class_icon} {test_class}    {class_time_ms}ms{Fore.RESET}")
-
-        for test in tests:
-            status = test.get('status')
-            icon = Fore.GREEN + "[PASS]" if status == 'passed' else Fore.RED + "[FAIL]"
-            time_str = test.get('time', '0ms')
-
-            print(f"    {icon} {test.get('name')}{Fore.RESET}    {time_str}")
-
-            # 如果有错误信息，显示错误信息
-            if 'error_stack' in test and test['error_stack']:
-                print(f"      {Fore.RED}Error: {test['error_stack']}{Fore.RESET}")
-
-    print("=" * 50)
-    print(f"总计: {summary['passed']}/{summary['total']} 测试通过")
-    print("=" * 50 + "\n")
-
-    return test_results, summary, class_times
-
-
-def parse_test_results(test_names, output):
-    """
-    解析测试输出，提取测试结果
-    返回: (test_results, summary, class_times)
-    test_results: 包含每个测试类和测试方法的详细结果
-    summary: 包含测试总数、通过数、失败数等摘要信息
-    class_times: 测试类耗时字典
-    """
-    # 直接调用ExtractTestDetails.py的解析方法
-    return extract_test_details(output)
-
+    """显示测试树结构"""
+    from ExtractTestDetails import extract_test_details, display_test_details
+    
+    # 从输出中提取测试结果
+    extracted_data = extract_test_details(output)
+    test_results = extracted_data["test_results"]
+    summary = extracted_data["summary"]
+    class_times = extracted_data["class_times"]
+    
+    # 使用ExtractTestDetails.py中的函数显示测试树
+    display_test_details(test_results, summary, class_times)
 
 def update_excel_result(summary, original_name):
     """更新Excel文件中的测试结果"""
@@ -199,7 +153,10 @@ def generate_test_report(test_names, output, original_name):
         component_name = str(original_name) if original_name else "未知库"
 
     # 解析测试结果
-    test_results, summary, class_times = parse_test_results(test_names, output)
+    extracted_data = extract_test_details(output)
+    test_results = extracted_data["test_results"]
+    summary = extracted_data["summary"]
+    class_times = extracted_data["class_times"]
 
     # 保存测试结果为JSON
     save_test_json(test_results, summary, class_times, component_name)
@@ -595,9 +552,19 @@ def generate_test_report(test_names, output, original_name):
     if not os.path.exists(REPORT_DIR):
         os.makedirs(REPORT_DIR)
 
-    # 使用原始组件名生成报告文件
-    report_path = os.path.join(REPORT_DIR, f"{original_name}.html")
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-
-    print(f"\n测试报告已生成: {report_path}")
+    # 使用组件名生成报告文件
+    report_path = os.path.join(REPORT_DIR, f"{component_name}.html")
+    
+    # 添加调试信息
+    print(f"正在生成HTML报告: {report_path}")
+    print(f"报告目录: {REPORT_DIR}")
+    print(f"组件名: {component_name}")
+    
+    try:
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        print(f"\n测试报告已生成: {report_path}")
+    except Exception as e:
+        print(f"写入HTML报告文件时出错: {str(e)}")
+        import traceback
+        traceback.print_exc()
