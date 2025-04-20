@@ -150,7 +150,7 @@ def generate_allure_report(test_data, library_name):
                 
                 # 写入测试结果文件
                 with open(result_file, 'w', encoding='utf-8') as f:
-                    json.dump(test_result, f, ensure_ascii=False, indent=2)
+                    json.dump(test_result, f, ensure_ascii=False, indent=2)  # type: ignore
         
         print(f"已为库 {library_name} 生成Allure报告数据")
         

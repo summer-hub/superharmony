@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 XTSRunner 主程序入口
 简化版入口文件，用于启动测试
@@ -12,7 +10,10 @@ from colorama import init, Fore
 from ReportGenerator import generate_final_report
 from config import EXCEL_FILE_PATH, PROJECT_DIR
 from main import run_all_libraries
-
+from config import SDK_API_MAPPING, set_sdk_version, set_release_mode
+from parallel_runner import run_parallel_tests
+from ReadExcel import read_libraries_from_excel, filter_library_by_repo_type
+from web_ui import start_web_ui
 
 def show_welcome_message():
     """显示欢迎信息和使用说明"""
@@ -52,7 +53,7 @@ def parse_arguments():
 
 def interactive_mode():
     """交互式模式，提示用户输入参数"""
-    from config import SDK_API_MAPPING
+
     
     args = type('Args', (), {})()
     
@@ -135,14 +136,12 @@ def interactive_mode():
         release_mode = input("是否开启release模式编译? (y/n): ").strip().lower()
         if release_mode in ['y', 'n']:
             args.release_mode = release_mode
-            from config import set_release_mode
             set_release_mode(release_mode == 'y')
             break
         else:
             print("请输入 'y' 或 'n'")
     
     # 设置SDK版本
-    from config import set_sdk_version
     set_sdk_version(args.sdk_version)
     
     # 询问是否启动Web UI
@@ -169,7 +168,6 @@ def main():
         args = interactive_mode()
     else:
         # 设置SDK版本和release模式
-        from config import set_sdk_version, set_release_mode
         if hasattr(args, 'sdk_version'):
             set_sdk_version(args.sdk_version)
         if hasattr(args, 'release_mode'):
@@ -178,7 +176,7 @@ def main():
     # 如果指定了并行运行，则启动并行处理
     if args.parallel:
         print("\n启动并行测试模式...\n")
-        from parallel_runner import run_parallel_tests
+
         run_parallel_tests(args)
     else:
         # 导入main模块中的函数并执行单一进程
@@ -191,7 +189,6 @@ def main():
     )
     
     # Filter libraries by repo_type before running
-    from ReadExcel import read_libraries_from_excel, filter_library_by_repo_type
     libraries, _, urls = read_libraries_from_excel()
     
     if hasattr(args, 'group') and args.group:
@@ -205,7 +202,6 @@ def main():
 
     # 如果指定了启动Web UI，则启动Web界面
     if args.web_ui:
-        from web_ui import start_web_ui
         start_web_ui()
     else:
         # 原有测试逻辑

@@ -1,11 +1,10 @@
-# 添加一个简单的Web界面
+import time
+
 from flask import Flask, render_template, request, jsonify
 import threading
 import subprocess
 import os
-import sys
 import locale
-import signal
 from ReportGenerator import register_completion_callback
 
 # 创建Flask应用，指定模板文件夹路径
@@ -76,7 +75,8 @@ def stop_test():
         if current_process is not None:
             try:
                 # 在Windows上，使用taskkill命令强制终止进程树
-                if os.name == 'nt':
+                # 确保进程对象有效且具有pid属性
+                if hasattr(current_process, 'pid'):
                     # 向main.py发送中断信号
                     import signal
                     # 先尝试发送SIGTERM信号，让main.py有机会设置interrupted标志
@@ -84,11 +84,10 @@ def stop_test():
                     # 等待一小段时间让信号处理程序执行
                     time.sleep(0.5)
                     # 然后使用taskkill强制终止进程树
-                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(current_process.pid)], 
-                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(current_process.pid)],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 else:
-                    # 在Unix系统上使用SIGTERM信号
-                    os.killpg(os.getpgid(current_process.pid), signal.SIGTERM)
+                    test_status["logs"].append("无法获取进程PID，进程可能已经结束")
                 
                 test_status["logs"].append("测试已被用户中断")
                 test_status["running"] = False

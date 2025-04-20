@@ -3,6 +3,11 @@ from GenerateTestReport import generate_test_report
 from GenerateAllureReport import generate_allure_report
 from GenerateHtmlReport import generate_html_report, update_overall_results
 
+import sys
+import os
+# 动态添加项目根目录到 sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # 全局变量，用于存储所有库的测试结果
 all_libraries_results = {
     "total": 0,

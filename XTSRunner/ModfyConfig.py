@@ -4,8 +4,7 @@ import json
 import shutil
 
 from ReadExcel import get_repo_info, read_libraries_from_excel, parse_git_url
-from config import (selected_sdk_version, SIGNING_CONFIG_SIG, BUNDLE_NAME_SIG,
-                    SIGNING_CONFIG_SAMPLES, BUNDLE_NAME_SAMPLES, SIGNING_CONFIG_TPC, BUNDLE_NAME_TPC)
+from config import selected_sdk_version
 
 
 def _run_config_scripts():
@@ -421,7 +420,11 @@ def _update_config():
 
 
 def _determine_repo_type_and_config():
-    """根据当前库的URL确定仓库类型、签名配置和包名"""
+    """根据当前库的仓库类型选择签名配置和包名"""
+    # 导入配置
+    from config import SIGNING_CONFIG_SIG, SIGNING_CONFIG_TPC, SIGNING_CONFIG_SAMPLES
+    from config import BUNDLE_NAME_SIG, BUNDLE_NAME_TPC, BUNDLE_NAME_SAMPLES
+
     try:
         # 获取当前库名
         current_library = _get_current_library_name()

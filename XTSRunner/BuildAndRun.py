@@ -4,12 +4,10 @@ import subprocess
 import re
 import time
 from colorama import  Fore
-
-from ExtractTestDetails import extract_test_details
-from GenerateTestReport import display_test_tree
+from ExtractTestDetails import extract_test_details, display_test_details
 from ModfyConfig import _run_config_scripts
 from ReportGenerator import generate_reports
-from config import PROJECT_DIR, ohpm_path, BUNDLE_NAME_SIG, node_path, hvigor_path
+from config import PROJECT_DIR, ohpm_path, BUNDLE_NAME_SIG, node_path, hvigor_path, get_release_mode
 from ReadExcel import get_repo_info
 
 
@@ -63,7 +61,7 @@ def clone_and_build(library_name):
         _install_ohpm_dependencies()
 
         # 根据用户选择决定是否执行release模式编译
-        from config import get_release_mode
+
         if get_release_mode():
             print(Fore.YELLOW + "正在执行release模式编译..." + Fore.RESET)
             _build_release()
@@ -414,7 +412,6 @@ def run_xts(library_name=None):
             class_times = extracted_data["class_times"]
             
             # 使用ExtractTestDetails.py中的函数显示测试树
-            from ExtractTestDetails import display_test_details
             display_test_details(test_results, summary, class_times)
             
             return output

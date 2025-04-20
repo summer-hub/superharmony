@@ -14,8 +14,8 @@ from GenerateAllureReport import generate_allure_report
 from GenerateHtmlReport import generate_html_report
 from ReadExcel import read_libraries_from_excel, parse_git_url
 from ReportGenerator import generate_final_report
-from config import check_dependencies, PROJECT_DIR, ALLURE_RESULTS_DIR, npm_path, ALLURE_REPORT_DIR
-
+from config import check_dependencies, PROJECT_DIR, ALLURE_RESULTS_DIR, npm_path, ALLURE_REPORT_DIR, \
+    STATIC_REPORT_DIR, REPORT_ZIP
 
 # 全局变量，用于控制测试中断
 interrupted = False
@@ -28,20 +28,20 @@ def signal_handler(sig, frame):
     interrupted = True
     
     # 强制终止当前正在运行的子进程（如果有）
-    if current_process is not None:
+    if current_process is not None and hasattr(current_process, 'pid'):
         try:
             print(f"{Fore.YELLOW}正在终止当前运行的子进程...{Fore.RESET}")
             if os.name == 'nt':  # Windows
-                # 在Windows上使用taskkill命令终止进程树
-                subprocess.run(['taskkill', '/F', '/T', '/PID', str(current_process.pid)], 
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(current_process.pid)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             else:  # Unix/Linux
-                # 在Unix系统上使用进程组ID终止整个进程组
                 os.killpg(os.getpgid(current_process.pid), signal.SIGTERM)
             print(f"{Fore.GREEN}子进程已终止{Fore.RESET}")
         except Exception as e:
             print(f"{Fore.RED}终止子进程时出错: {str(e)}{Fore.RESET}")
-    
+    else:
+        print(f"{Fore.YELLOW}当前没有运行的子进程需要终止{Fore.RESET}")
+
     # 如果是SIGINT（Ctrl+C），则直接退出程序
     if sig == signal.SIGINT:
         print(f"{Fore.YELLOW}用户按下Ctrl+C，正在退出程序...{Fore.RESET}")
@@ -70,9 +70,11 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
         "total": 0,           # 总测试用例数
         "passed": 0,          # 通过的测试用例数
         "failed": 0,          # 失败的测试用例数
+        "error": 0,           # 错误的测试用例数
         "total_libs": len(libraries),  # 总库数
         "passed_libs": 0,     # 通过的库数
         "failed_libs": 0,     # 失败的库数
+        "error_libs": 0,     # 错误的库数
         "libraries": []       # 库级别的详细结果
     }
 
@@ -135,6 +137,7 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                     lib_total = summary.get("total", 0)
                     lib_passed = summary.get("passed", 0)
                     lib_failed = summary.get("failed", 0)
+                    lib_error = summary.get("error", 0)
                 else:
                     # 原始计算方式
                     lib_total = sum(len(tests) for key, tests in test_results.items() 
@@ -142,21 +145,31 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                     lib_passed = sum(1 for key, tests in test_results.items() 
                                     if key != '_statistics' and isinstance(tests, list)
                                     for test in tests if test.get('status') == 'passed')
-                    lib_failed = lib_total - lib_passed
-                
-                # 判断库是否全部通过
-                lib_passed_status = lib_failed == 0 and lib_total > 0
+                    lib_failed = sum(1 for key, tests in test_results.items() 
+                                    if key != '_statistics' and isinstance(tests, list)
+                                    for test in tests if test.get('status') == 'failed')
+                    lib_error = lib_total - lib_passed - lib_failed
                 
                 # 更新总体结果
                 overall_results["total"] += lib_total
                 overall_results["passed"] += lib_passed
                 overall_results["failed"] += lib_failed
+                overall_results["error"] += lib_error
                 
-                # 更新库级别的通过/失败计数
-                if lib_passed_status:
+                # 判断库的状态
+                if lib_error > 0:
+                    lib_status = "error"
+                    overall_results["error_libs"] += 1
+                elif lib_failed > 0:
+                    lib_status = "failed"
+                    overall_results["failed_libs"] += 1
+                elif lib_passed == lib_total and lib_total > 0:
+                    lib_status = "passed"
                     overall_results["passed_libs"] += 1
                 else:
-                    overall_results["failed_libs"] += 1
+                    # 如果没有明确的错误或失败，但通过数小于总数，视为错误
+                    lib_status = "error"
+                    overall_results["error_libs"] += 1
                 
                 # 保存原始库名，用于最终报告显示
                 overall_results["libraries"].append({
@@ -165,20 +178,22 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                     "total": lib_total,
                     "passed": lib_passed,
                     "failed": lib_failed,
-                    "status": "passed" if lib_passed_status else "failed",
+                    "error": lib_error,
+                    "status": lib_status,  # 使用新的状态判断结果
                     "test_results": test_results  # 保存详细的测试结果
                 })
                 
                 # 生成该库的Allure报告
                 generate_allure_report(test_results, name)
             else:
+                e = None
                 # 如果test_results不是字典，创建一个默认的测试结果
                 default_test_results = {
                     "ErrorTestClass": [{
                         "name": "errorTest",
                         "status": "error",  # 出错的库标记为错误
                         "time": "1ms",
-                        "error_message": str(e)  # 保存错误信息
+                        "error_message": str(e) if e else "未知错误"  # 保存错误信息
                     }]
                 }
 
@@ -197,13 +212,6 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                     "error_message": str(e)  # 记录错误信息
                 })
                 overall_results["total"] += 1
-                
-                # 确保error和error_libs字段存在
-                if "error" not in overall_results:
-                    overall_results["error"] = 0
-                if "error_libs" not in overall_results:
-                    overall_results["error_libs"] = 0
-                    
                 overall_results["error"] += 1
                 overall_results["error_libs"] += 1
 
@@ -261,13 +269,6 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                     "error_message": str(e)  # 记录错误信息
                 })
                 overall_results["total"] += 1
-                
-                # 确保error和error_libs字段存在
-                if "error" not in overall_results:
-                    overall_results["error"] = 0
-                if "error_libs" not in overall_results:
-                    overall_results["error_libs"] = 0
-                    
                 overall_results["error"] += 1
                 overall_results["error_libs"] += 1
                 
@@ -399,8 +400,8 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                 print(f"HTML报告已生成: {html_report_path}")
             else:
                 print(f"{Fore.YELLOW}警告: HTML总报告生成可能不完整，将使用默认路径{Fore.RESET}")
-                html_report_path = os.path.join(PROJECT_DIR, "html-report", "index.html")
-        
+                html_report_path = os.path.join(PROJECT_DIR, "results", "html-report", "index.html")
+
         # 尝试生成Allure报告
         print("\n尝试生成Allure测试报告...")
         
@@ -466,24 +467,24 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
         
         # 生成静态HTML版本的Allure报告（无论交互式报告是否成功）
         print("\n生成静态版Allure报告...")
-        static_report_dir = os.path.join(PROJECT_DIR, "allure-report-static")
-        if not os.path.exists(static_report_dir):
-            os.makedirs(static_report_dir)
+        
+        if not os.path.exists(STATIC_REPORT_DIR):
+            os.makedirs(STATIC_REPORT_DIR)
         
         static_report_generated = False
         if allure_available:
             try:
                 # 使用allure generate命令生成静态报告
-                generate_cmd = f'allure generate {ALLURE_RESULTS_DIR} -o {static_report_dir} --clean'
+                generate_cmd = f'allure generate {ALLURE_RESULTS_DIR} -o {STATIC_REPORT_DIR} --clean'
                 subprocess.run(generate_cmd, shell=True, check=True)
                 static_report_generated = True
-                print(f"静态版Allure报告已生成: {static_report_dir}")
+                print(f"静态版Allure报告已生成: {STATIC_REPORT_DIR}")
                 
                 # 将报告打包成zip文件，方便分享
                 import shutil
-                report_zip = os.path.join(PROJECT_DIR, "allure-report-static.zip")
-                shutil.make_archive(os.path.splitext(report_zip)[0], 'zip', static_report_dir)
-                print(f"静态报告压缩包已生成: {report_zip}")
+                
+                shutil.make_archive(os.path.splitext(REPORT_ZIP)[0], 'zip', STATIC_REPORT_DIR)
+                print(f"静态报告压缩包已生成: {REPORT_ZIP}")
                 print("你可以将生成的压缩包发送给其他人，解压后打开 index.html 即可查看完整报告")
             except Exception as e:
                 print(f"生成静态版Allure报告时出错: {str(e)}")
@@ -504,7 +505,7 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
         if allure_report_generated:
             print(f"- Allure交互式报告: {ALLURE_REPORT_DIR}")
         if static_report_generated:
-            print(f"- Allure静态报告: {static_report_dir}")
+            print(f"- Allure静态报告: {STATIC_REPORT_DIR}")
             print(f"- 静态报告压缩包: {os.path.join(PROJECT_DIR, 'allure-report-static.zip')}")
             
     except Exception as e:

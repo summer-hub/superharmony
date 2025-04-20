@@ -19,7 +19,6 @@ import subprocess
 import sys
 import multiprocessing
 from io import TextIOWrapper
-from functools import partial
 from colorama import Fore
 from config import set_sdk_version, set_release_mode, SDK_API_MAPPING, HTML_REPORT_DIR, PROJECT_DIR
 

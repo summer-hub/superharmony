@@ -6,13 +6,12 @@ from openpyxl import load_workbook
 
 from config import REPORT_DIR, EXCEL_FILE_PATH
 from ReadExcel import read_libraries_from_excel
-from ExtractTestDetails import extract_test_details
+from ExtractTestDetails import extract_test_details, display_test_details
 
 
 # 假设这是GenerateTestReport.py中的display_test_tree函数
 def display_test_tree(output):
     """显示测试树结构"""
-    from ExtractTestDetails import extract_test_details, display_test_details
     
     # 从输出中提取测试结果
     extracted_data = extract_test_details(output)
@@ -122,7 +121,7 @@ def save_test_json(test_results, summary, class_times, component_name):
 
     # 保存为JSON文件
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump(data, f, indent=2, ensure_ascii=False)  # type: ignore
 
     print(f"测试结果已保存到 {output_file}")
 

@@ -7,11 +7,8 @@ import colorama  # 添加彩色输出支持
 # 初始化colorama
 colorama.init()
 
-from config import PROJECT_DIR
+from config import HTML_REPORT_DIR, OVERALL_RESULTS_FILE
 from ReadExcel import read_libraries_from_excel, parse_git_url
-
-# 保存总体结果的文件路径
-OVERALL_RESULTS_FILE = os.path.join(PROJECT_DIR, "html-report", "overall_results.json")
 
 # 定义彩色输出函数
 def print_error(message):
@@ -29,11 +26,6 @@ def print_success(message):
 def update_overall_results(overall_results):
     """更新总体结果文件"""
     try:
-        # 确保报告目录存在
-        html_report_dir = os.path.join(PROJECT_DIR, "html-report")
-        if not os.path.exists(html_report_dir):
-            os.makedirs(html_report_dir)
-            
         # 保存总体结果到JSON文件
         with open(OVERALL_RESULTS_FILE, 'w', encoding='utf-8') as f:
             json.dump(overall_results, f, ensure_ascii=False, indent=2) # type: ignore
@@ -45,11 +37,6 @@ def generate_html_report(overall_results):
     """生成详细的HTML测试报告"""
     try:
         print("生成详细HTML测试报告...")
-
-        # 创建报告目录
-        html_report_dir = os.path.join(PROJECT_DIR, "html-report")
-        if not os.path.exists(html_report_dir):
-            os.makedirs(html_report_dir)
         
         # 获取库列表和URL信息
         libraries, _, urls = read_libraries_from_excel()
@@ -80,11 +67,11 @@ def generate_html_report(overall_results):
                     print_warning("警告: 发现没有名称的库，跳过生成报告")
                     continue
                     
-                lib_report_path = generate_library_report(lib, lib_name, urls.get(lib_name, ""), html_report_dir)
+                lib_report_path = generate_library_report(lib, lib_name, urls.get(lib_name, ""), HTML_REPORT_DIR)
                 
                 # 只有当报告路径有效时才添加到库信息中
                 if lib_report_path:
-                    lib["report_path"] = os.path.relpath(lib_report_path, html_report_dir)
+                    lib["report_path"] = os.path.relpath(lib_report_path, HTML_REPORT_DIR)
                 else:
                     print_warning(f"警告: 库 {lib_name} 的报告生成失败，跳过添加报告路径")
             except Exception as e:
@@ -93,25 +80,25 @@ def generate_html_report(overall_results):
         
         # 生成总体报告
         try:
-            main_report_path = generate_main_report(overall_results, repo_groups, current_time, html_report_dir)
+            main_report_path = generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT_DIR)
             if main_report_path:
                 print_success(f"HTML报告已生成: {main_report_path}")
                 return main_report_path
             else:
-                default_path = os.path.join(html_report_dir, "index.html")
+                default_path = os.path.join(HTML_REPORT_DIR, "index.html")
                 print_warning(f"主报告生成可能不完整，使用默认路径: {default_path}")
                 return default_path
         except Exception as e:
             print_error(f"生成主报告时出错: {str(e)}")
             # 返回默认报告路径，即使生成失败
-            return os.path.join(html_report_dir, "index.html")
+            return os.path.join(HTML_REPORT_DIR, "index.html")
         
     except Exception as e:
         print_error(f"生成HTML报告时出错: {str(e)}")
         # 不打印完整的堆栈跟踪，只显示简单的错误信息
         return None
 
-def generate_library_report(lib, lib_name, url, html_report_dir):
+def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
     """为单个库生成HTML报告"""
     try:
         # 类型检查
@@ -120,7 +107,7 @@ def generate_library_report(lib, lib_name, url, html_report_dir):
             return None
             
         # 创建库报告目录
-        lib_dir = os.path.join(html_report_dir, "libraries")
+        lib_dir = os.path.join(HTML_REPORT_DIR, "libraries")
         if not os.path.exists(lib_dir):
             os.makedirs(lib_dir)
         
@@ -434,7 +421,7 @@ def generate_library_report(lib, lib_name, url, html_report_dir):
         print_error(f"生成库报告时出错 ({lib_name}): {str(e)}")
         return None
 
-def generate_main_report(overall_results, repo_groups, current_time, html_report_dir):
+def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT_DIR):
     """生成主HTML报告"""
     try:
         # 准备报告数据
@@ -753,7 +740,7 @@ def generate_main_report(overall_results, repo_groups, current_time, html_report
         """
         
         # 保存主报告
-        main_report_path = os.path.join(html_report_dir, "index.html")
+        main_report_path = os.path.join(HTML_REPORT_DIR, "index.html")
         with open(main_report_path, 'w', encoding='utf-8') as f:
             f.write(main_html)
         
