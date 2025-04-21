@@ -13,6 +13,7 @@
 参数:
     args: 包含运行参数的对象，通常从命令行或交互式输入获取
 """
+import copy
 import json
 import os
 import subprocess
@@ -117,7 +118,125 @@ except ImportError:
 
 
 def run_parallel_tests(args=None):
-    """并行运行三个仓库组的测试"""
+    """并行运行测试"""
+    try:
+        # 如果没有传入参数，创建一个简单的参数对象
+        if args is None:
+            from argparse import Namespace
+            args = Namespace()
+            args.sdk_version = None
+            args.release_mode = None
+            args.group = None
+            args.specific_library = None
+
+        # 处理SDK版本
+        if hasattr(args, 'sdk_version') and args.sdk_version:
+            sdk_version = args.sdk_version
+            set_sdk_version(sdk_version)
+        else:
+            while True:
+                print("\n可用的SDK版本:")
+                for i, version in enumerate(SDK_API_MAPPING.keys(), 1):
+                    print(f"{i}. {version}")
+                
+                sdk_choice = input("请选择SDK版本 (输入序号): ").strip()
+                try:
+                    sdk_idx = int(sdk_choice) - 1
+                    if 0 <= sdk_idx < len(SDK_API_MAPPING):
+                        sdk_version = list(SDK_API_MAPPING.keys())[sdk_idx]
+                        set_sdk_version(sdk_version)
+                        args.sdk_version = sdk_version
+                        break
+                    else:
+                        print("无效的选择，请重新输入")
+                except ValueError:
+                    print("请输入有效的数字")
+        
+        # 处理发布模式
+        if hasattr(args, 'release_mode') and args.release_mode:
+            release_mode = args.release_mode
+            set_release_mode(release_mode == 'y')
+        else:
+            while True:
+                release_mode = input("是否开启release模式编译? (y/n): ").strip().lower()
+                if release_mode in ['y', 'n']:
+                    set_release_mode(release_mode == 'y')
+                    args.release_mode = release_mode
+                    break
+                print("请输入 'y' 或 'n'")
+
+        # 创建进程池
+        processes = []
+        repo_types = ["openharmony-sig", "openharmony-tpc", "openharmony_tpc_samples"]
+        
+        for repo_type in repo_types:
+            # 为每个仓库组创建新的参数对象
+            repo_args = copy.deepcopy(args)
+            repo_args.group = repo_type
+            
+            # 创建新进程
+            p = multiprocessing.Process(
+                target=run_single_repo_test,
+                args=(repo_args,)
+            )
+            processes.append(p)
+            p.start()
+        
+        # 等待所有进程完成
+        for p in processes:
+            p.join()
+            
+        print("所有仓库组测试完成")
+        
+    except Exception as e:
+        print(f"并行测试执行出错: {str(e)}")
+
+# 添加运行单个仓库测试的函数
+def run_single_repo_test(args):
+    """运行单个仓库组的测试
+    
+    参数:
+        args: 包含运行参数的对象，通常从命令行或交互式输入获取
+    """
+    try:
+        print(f"开始运行仓库组 {args.group} 的测试...")
+        
+        # 构建命令
+        cmd = [
+            sys.executable,
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "run.py"),
+            "--group", args.group,
+            "--sdk-version", args.sdk_version,
+            "--release-mode", args.release_mode
+        ]
+        
+        # 如果有特定库参数，添加到命令中
+        if hasattr(args, 'specific_library') and args.specific_library:
+            cmd.extend(["--specific-library", args.specific_library])
+        
+        # 执行命令
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            universal_newlines=True
+        )
+        
+        # 读取并打印输出
+        for line in process.stdout:
+            print(f"[{args.group}] {line.strip()}")
+        
+        # 等待进程完成
+        process.wait()
+        
+        print(f"仓库组 {args.group} 的测试已完成，退出代码: {process.returncode}")
+        
+    except Exception as e:
+        print(f"运行仓库组 {args.group} 测试时出错: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
     # 获取当前脚本路径
     base_dir = os.path.dirname(os.path.abspath(__file__))
 

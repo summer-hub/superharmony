@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -447,8 +448,28 @@ def run_in_new_cmd(test_names, library_name):
         runner_dir = "TestRunner"
         print(f"未找到TestRunner目录，使用默认值: {runner_dir}")
 
+    # 定义module.json5文件路径
+    module_json5_path = os.path.join("entry", "src", "ohosTest", "module.json5")
+
+    # 检查并读取module.json5文件
+    if os.path.exists(module_json5_path):
+        with open(module_json5_path, 'r', encoding='utf-8') as module_file:
+            module_data = json.load(module_file)
+            module_name = module_data.get("module", {}).get("name", "entry_test")
+            abilities = module_data.get("module", {}).get("abilities", [])
+            
+            # 处理abilities中的srcEntrance
+            for ability in abilities:
+                if "srcEntrance" in ability:
+                    ability["srcEntrance"] = ability.get("srcEntrance").replace("srcEntrance", "srcEntry")
+                else:
+                    print(f"没有srcEntrance，直接跳过")
+    else:
+        print(f"警告： 未找到module.json5文件，使用默认的module名称： entry_test")
+        module_name = "entry_test"
+
     # 使用检测到的路径执行测试
-    cmd = (f'hdc shell aa test -b {BUNDLE_NAME_SIG} -m entry_test '
+    cmd = (f'hdc shell aa test -b {BUNDLE_NAME_SIG} -m {module_name} '
            f'-s unittest /ets/{runner_dir}/OpenHarmonyTestRunner -s class {test_classes} -s timeout 15000')
 
     print(f"执行测试命令: {cmd}")
@@ -601,7 +622,8 @@ def _clone_repo(library_name):
         "ohos_mqtt",
         "ohos_coap",
         "mp4parser",
-        "ohos_videocompressor"
+        "ohos_videocompressor",
+        "jtar"
     }
 
     # 构建克隆URL

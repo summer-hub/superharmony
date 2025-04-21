@@ -14,14 +14,14 @@ ohpm_path = os.path.join(DEVECO_DIR, r"tools\ohpm\bin\ohpm.bat")
 
 # 报告相关配置
 PROJECT_DIR = os.getcwd()
-EXCEL_FILE_PATH = os.path.join(PROJECT_DIR, "data", "三方库测试表-部分库.xlsx")
+EXCEL_FILE_PATH = os.path.join(PROJECT_DIR, "data", "三方库测试表-有问题的库.xlsx")
 REPORT_DIR = os.path.join(PROJECT_DIR, "results", "test-reports")  # HTML详细报告
 ALLURE_RESULTS_DIR = os.path.join(PROJECT_DIR, "results", "allure-results")  # Allure报告
 ALLURE_REPORT_DIR = os.path.join(PROJECT_DIR, "results", "allure-report")
 HTML_REPORT_DIR = os.path.join(PROJECT_DIR, "results", "html-report")  # HTML总览报告
 STATIC_REPORT_DIR = os.path.join(PROJECT_DIR, "results", "allure-report-static")
 REPORT_ZIP = os.path.join(PROJECT_DIR, "results", "allure-report-static.zip")
-OVERALL_RESULTS_FILE = os.path.join(PROJECT_DIR, "html-report", "overall_results.json")
+OVERALL_RESULTS_FILE = os.path.join(PROJECT_DIR, "results", "html-report", "overall_results.json")
 
 BUNDLE_NAME_SIG = "cn.openharmony.thrift"
 # 添加签名配置
@@ -93,6 +93,7 @@ SDK_API_MAPPING = {
     "5.0.2": "14",
     "5.0.3": "15",
     "5.0.4": "16",
+    "5.0.5": "17",
     "5.1.0": "18"
 }
 

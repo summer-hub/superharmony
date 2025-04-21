@@ -169,3 +169,34 @@ def filter_library_by_repo_type(library_name, repo_type):
         
     except Exception as e:
         print(f"过滤库时出错: {str(e)}")
+
+
+def fuzzy_match_libraries(search_term):
+    """
+    模糊匹配库名称
+    
+    参数:
+        search_term: 搜索关键词
+        
+    返回:
+        匹配到的库名列表
+    """
+    try:
+        # 读取Excel文件中的所有库
+        libraries, _, urls = read_libraries_from_excel()
+        
+        # 如果搜索词为空，返回所有库
+        if not search_term:
+            return libraries
+            
+        # 转换为小写进行不区分大小写的匹配
+        search_term = search_term.lower()
+        
+        # 模糊匹配
+        matched_libraries = [lib for lib in libraries if search_term in lib.lower()]
+        
+        return matched_libraries
+        
+    except Exception as e:
+        print(f"模糊匹配库时出错: {str(e)}")
+        return []

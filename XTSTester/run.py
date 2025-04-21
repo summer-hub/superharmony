@@ -14,6 +14,7 @@ from utils.config import SDK_API_MAPPING, set_sdk_version, set_release_mode
 from parallel.parallel_runner import run_parallel_tests
 from core.ReadExcel import read_libraries_from_excel, filter_library_by_repo_type
 from ui.web_ui import start_web_ui
+from reports.ReportGenerator import set_parallel_mode
 
 def show_welcome_message():
     """显示欢迎信息和使用说明"""
@@ -42,18 +43,18 @@ def parse_arguments():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description='运行三方库测试')
     parser.add_argument('--web-ui', action='store_true', help='启动Web界面')
-    parser.add_argument('--group', help='指定仓库组 (openharmony-sig, openharmony-tpc, openharmony_tpc_samples)')
+    parser.add_argument('--group', help='指定仓库组 (openharmony-sig, openharmony-tpc, openharmony_tpc_samples, auto)')
     parser.add_argument('--libs-file', help='包含库列表的文件路径')
     parser.add_argument('--output-dir', help='输出目录')
     parser.add_argument('--sdk-version', help='SDK版本，例如5.0.4')
     parser.add_argument('--release-mode', choices=['y', 'n'], help='是否开启release模式编译')
     parser.add_argument('--parallel', action='store_true', help='是否并行运行三个仓库组')
+    parser.add_argument('--specific-library', action='append', help='指定要测试的特定库名称，可多次使用此参数指定多个库')
     return parser.parse_args()
 
 
 def interactive_mode():
     """交互式模式，提示用户输入参数"""
-
     
     args = type('Args', (), {})()
     
@@ -63,24 +64,67 @@ def interactive_mode():
     print("2. openharmony-tpc")
     print("3. openharmony_tpc_samples")
     print("4. 并行运行所有仓库组")
+    print("5. 搜索并测试特定库")
     
     while True:
-        choice = input("请输入选择 (1-4): ").strip()
+        choice = input("请输入选择 (1-5): ").strip()
         if choice == '1':
             args.group = "openharmony-sig"
             args.parallel = False
+            args.specific_libraries = None
             break
         elif choice == '2':
             args.group = "openharmony-tpc"
             args.parallel = False
+            args.specific_libraries = None
             break
         elif choice == '3':
             args.group = "openharmony_tpc_samples"
             args.parallel = False
+            args.specific_libraries = None
             break
         elif choice == '4':
             args.group = None
             args.parallel = True
+            args.specific_libraries = None
+            break
+        elif choice == '5':
+            # 搜索特定库
+            from core.ReadExcel import fuzzy_match_libraries
+            
+            search_term = input("请输入要搜索的库名关键词: ").strip()
+            matched_libraries = fuzzy_match_libraries(search_term)
+            
+            if not matched_libraries:
+                print(f"未找到包含 '{search_term}' 的库，请重新选择")
+                continue
+                
+            print(f"\n找到 {len(matched_libraries)} 个匹配的库:")
+            for i, lib in enumerate(matched_libraries, 1):
+                print(f"{i}. {lib}")
+                
+            # 让用户选择要测试的库
+            selected_indices = input("\n请输入要测试的库的序号(多个序号用逗号分隔，输入'all'测试所有匹配的库): ").strip()
+            
+            if selected_indices.lower() == 'all':
+                selected_libraries = matched_libraries
+            else:
+                try:
+                    indices = [int(idx.strip()) for idx in selected_indices.split(',')]
+                    selected_libraries = [matched_libraries[idx-1] for idx in indices if 1 <= idx <= len(matched_libraries)]
+                    
+                    if not selected_libraries:
+                        print("未选择有效的库，请重新选择")
+                        continue
+                except ValueError:
+                    print("输入格式错误，请输入有效的数字序号")
+                    continue
+            
+            # 直接使用自动检测模式，不再询问用户
+            print("\n将使用自动检测模式确定库的仓库类型")
+            args.group = "auto"
+            args.parallel = False
+            args.specific_libraries = selected_libraries
             break
         else:
             print("无效的选择，请重新输入")
@@ -168,62 +212,73 @@ def main():
         args = interactive_mode()
     else:
         # 设置SDK版本和release模式
-        if hasattr(args, 'sdk_version'):
+        if hasattr(args, 'sdk_version') and args.sdk_version:
             set_sdk_version(args.sdk_version)
-        if hasattr(args, 'release_mode'):
+        if hasattr(args, 'release_mode') and args.release_mode:
             set_release_mode(args.release_mode == 'y')
     
     # 如果指定了并行运行，则启动并行处理
     if args.parallel:
         print("\n启动并行测试模式...\n")
-
+        # 设置并行模式（3个仓库组）
+        set_parallel_mode(True, 3)
         run_parallel_tests(args)
     else:
-        # 导入main模块中的函数并执行单一进程
+        # 单进程模式
+        set_parallel_mode(False)
         print(f"\n开始执行 {args.group} 仓库组的测试...\n")
 
     # Create args namespace with output_dir and repo_type
     args_namespace = argparse.Namespace(
-        output_dir=args.output_dir if hasattr(args, 'output_dir') else os.getcwd(),
-        repo_type=args.group if hasattr(args, 'group') else "default"
+        output_dir=args.output_dir if hasattr(args, 'output_dir') and args.output_dir else os.path.join(PROJECT_DIR, "results"),
+        repo_type=args.group if hasattr(args, 'group') else "default",
+        specific_libraries=args.specific_library if hasattr(args, 'specific_library') else None
     )
     
-    # Filter libraries by repo_type before running
-    libraries, _, urls = read_libraries_from_excel()
-    
-    if hasattr(args, 'group') and args.group:
-        libraries = [lib for lib in libraries 
-                    if filter_library_by_repo_type(lib, args.group)]
-        print(f"过滤后库数量: {len(libraries)}")
-    # Pass the filtered libraries to run_all_libraries
-    start_time = time.time()
-    current_time = time.strftime("%Y/%m/%d %H时%M分%S秒", time.localtime(start_time))
-    print(f"测试开始时间: {current_time}")
-
     # 如果指定了启动Web UI，则启动Web界面
     if args.web_ui:
         start_web_ui()
     else:
         # 原有测试逻辑
+        # Filter libraries by repo_type before running
+        libraries, _, urls = read_libraries_from_excel()
+        
+        # 如果指定了特定库，则使用这些库
+        if hasattr(args, 'specific_library') and args.specific_library:
+            libraries = args.specific_library
+        # 否则，按仓库类型过滤
+        elif hasattr(args, 'group') and args.group and args.group != "auto":
+            libraries = [lib for lib in libraries 
+                        if filter_library_by_repo_type(lib, args.group)]
+            print(f"过滤后库数量: {len(libraries)}")
+            
+        # 记录开始时间
+        start_time = time.time()
+        current_time = time.strftime("%Y/%m/%d %H时%M分%S秒", time.localtime(start_time))
+        print(f"测试开始时间: {current_time}")
+        
+        # 执行测试
         run_all_libraries(
             repo_type=args_namespace.repo_type, 
             args=args_namespace,
             libraries=libraries,
             urls=urls
         )
-    end_time = time.time()
-    current_time = time.strftime("%Y/%m/%d %H时%M分%S秒", time.localtime(end_time))
-    print(f"测试结束时间: {current_time}")
+        
+        # 记录结束时间
+        end_time = time.time()
+        current_time = time.strftime("%Y/%m/%d %H时%M分%S秒", time.localtime(end_time))
+        print(f"测试结束时间: {current_time}")
 
-    # Calculate and print duration
-    duration = end_time - start_time
-    hours = int(duration // 3600)
-    minutes = int((duration % 3600) // 60)
-    seconds = int(duration % 60)
-    print(f"总耗时: {hours}小时{minutes}分钟{seconds}秒")
-    # 在所有库测试完成后生成最终报告
-    generate_final_report()
-
+        # 计算并打印持续时间
+        duration = end_time - start_time
+        hours = int(duration // 3600)
+        minutes = int((duration % 3600) // 60)
+        seconds = int(duration % 60)
+        print(f"总耗时: {hours}小时{minutes}分钟{seconds}秒")
+        
+        # 在所有库测试完成后生成最终报告
+        generate_final_report()
 
 if __name__ == "__main__":
     main()

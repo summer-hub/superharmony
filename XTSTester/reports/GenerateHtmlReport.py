@@ -26,6 +26,12 @@ def print_success(message):
 def update_overall_results(overall_results):
     """更新总体结果文件"""
     try:
+        # 确保目录存在
+        results_dir = os.path.dirname(OVERALL_RESULTS_FILE)
+        if not os.path.exists(results_dir):
+            os.makedirs(results_dir)
+            print(f"创建目录: {results_dir}")
+        
         # 保存总体结果到JSON文件
         with open(OVERALL_RESULTS_FILE, 'w', encoding='utf-8') as f:
             json.dump(overall_results, f, ensure_ascii=False, indent=2) # type: ignore

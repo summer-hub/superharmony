@@ -1,3 +1,5 @@
+import threading
+
 from ExtractTestDetails import extract_test_details
 from GenerateTestReport import generate_test_report
 from GenerateAllureReport import generate_allure_report
@@ -25,6 +27,19 @@ def register_completion_callback(callback):
     """注册一个在报告生成完成时调用的回调函数"""
     if callback not in report_completion_callbacks:
         report_completion_callbacks.append(callback)
+
+# 添加新的全局变量
+is_parallel_mode = False
+parallel_completed_count = 0
+parallel_total_count = 0
+parallel_lock = threading.Lock()
+
+def set_parallel_mode(is_parallel, total_processes=0):
+    """设置是否为并行模式"""
+    global is_parallel_mode, parallel_total_count, parallel_completed_count
+    is_parallel_mode = is_parallel
+    parallel_total_count = total_processes
+    parallel_completed_count = 0
 
 def generate_reports(test_names, output, original_name):
     """

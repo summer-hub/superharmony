@@ -40,7 +40,7 @@ def signal_handler(sig, frame):
         except Exception as e:
             print(f"{Fore.RED}终止子进程时出错: {str(e)}{Fore.RESET}")
     else:
-        print(f"{Fore.YELLOW}当前没有运行的子进程需要终止{Fore.RESET}")
+        print(f"{Fore.YELLOW}当前子进程以非常规方式终止{Fore.RESET}")
 
     # 如果是SIGINT（Ctrl+C），则直接退出程序
     if sig == signal.SIGINT:
@@ -52,7 +52,7 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 def run_all_libraries(repo_type, args, libraries=None, urls=None):
-    global name, interrupted
+    global current_process, interrupted
     init()  # 初始化颜色输出
     """按顺序执行Excel中的所有库"""
     # 检查依赖
@@ -64,6 +64,43 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
     # 如果没有传入libraries和urls，则从Excel读取
     if libraries is None or urls is None:
         libraries, _, urls = read_libraries_from_excel()
+    
+    # 如果指定了特定库，则只测试这些库
+    if hasattr(args, 'specific_libraries') and args.specific_libraries:
+        specific_libraries = args.specific_libraries
+        # 确保所有指定的库都在Excel中
+        filtered_libraries = []
+        for lib in specific_libraries:
+            if lib in libraries:
+                filtered_libraries.append(lib)
+            else:
+                print(f"警告：指定的库 {lib} 不在Excel中，将被跳过")
+        libraries = filtered_libraries
+        print(f"将测试 {len(libraries)} 个指定的库")
+    
+    # 如果repo_type是auto，则根据URL自动检测每个库的仓库类型
+    if repo_type == "auto":
+        print("使用自动检测模式确定库的仓库类型")
+        filtered_libraries = []
+        for lib in libraries:
+            url = urls.get(lib, "")
+            if not url:
+                print(f"警告：找不到库 {lib} 的URL信息，将被跳过")
+                continue
+                
+            owner, name, _ = parse_git_url(url)
+            if owner == "openharmony-sig":
+                print(f"库 {lib} 属于 openharmony-sig 仓库组")
+                filtered_libraries.append(lib)
+            elif owner == "openharmony-tpc" and name != "openharmony_tpc_samples":
+                print(f"库 {lib} 属于 openharmony-tpc 仓库组")
+                filtered_libraries.append(lib)
+            elif name == "openharmony_tpc_samples":
+                print(f"库 {lib} 属于 openharmony_tpc_samples 仓库组")
+                filtered_libraries.append(lib)
+            else:
+                print(f"警告：无法确定库 {lib} 的仓库类型，将被跳过")
+        libraries = filtered_libraries
     
     # 记录总体测试结果
     overall_results = {
@@ -272,7 +309,7 @@ def run_all_libraries(repo_type, args, libraries=None, urls=None):
                 overall_results["error"] += 1
                 overall_results["error_libs"] += 1
                 
-                # 将库添加到失败列表中
+                # 将库添加到失败列表中  
                 failed_libraries.append(library_name)
                 
             except Exception as inner_e:
