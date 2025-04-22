@@ -29,6 +29,16 @@ XTSTester/
 └── run_parallel.bat # 并行测试批处理
 ```
 
+## 前置配置
+config.py 文件中需要配置以下参数：
+- `DEVECO_DIR`: DEVECO_DIR路径
+- `node_path`: node.js路径
+- `hvigor_path`: hvigor路径
+- `npm_path`: npm路径
+- `ohpm_path`: ohpm路径
+- `EXCEL_FILE_PATH`: 测试用例Excel文件路径
+- `SIGNING_CONFIG_XXX`: 所有签名配置的路径要把"D:\\code\\PycharmProjects\\0419"替换为你本地的路径
+
 ## 使用说明
 ### 1. 命令行模式
 ```bash

@@ -6,7 +6,7 @@ import re
 import time
 from colorama import  Fore
 from ExtractTestDetails import extract_test_details, display_test_details
-from ModfyConfig import _run_config_scripts
+from ModfyConfig import _run_config_scripts, _determine_repo_type_and_config
 from ReportGenerator import generate_reports
 from config import PROJECT_DIR, ohpm_path, BUNDLE_NAME_SIG, node_path, hvigor_path, get_release_mode
 from ReadExcel import get_repo_info
@@ -27,8 +27,12 @@ def clone_and_build(library_name):
             return {"test_results": {"ErrorTestClass": [{"name": "errorTest", "status": "error", "time": "1ms", "error_message": "无法获取仓库信息"}]},
                     "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
                     "class_times": {"ErrorTestClass": 1}}
+
+        # 获取动态bundle_name
+        global BUNDLE_NAME
+        _, _, BUNDLE_NAME = _determine_repo_type_and_config()
             
-        print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}")
+        print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}, bundle_name ={BUNDLE_NAME}")
         
         # 1. 创建并进入Libraries目录
         libraries_dir = os.path.abspath(os.path.join(os.getcwd(), "Libraries"))
@@ -302,7 +306,7 @@ def run_xts(library_name=None):
     """运行XTS测试套件，返回测试输出结果"""
     try:
         # 获取原始库名
-        from core.ReadExcel import read_libraries_from_excel
+        from ReadExcel import read_libraries_from_excel
         libraries, original_name, urls = read_libraries_from_excel(library_name)
         
         # 1.同步项目
