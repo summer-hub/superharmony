@@ -437,19 +437,25 @@ def _determine_repo_type_and_config():
         if current_library:
             # 使用ReadExcel.py中的get_repo_info获取仓库信息
             owner, _, _ = get_repo_info(current_library)
+            
+            # 如果无法通过get_repo_info获取owner，尝试直接从URL解析
+            if not owner:
+                _, _, urls = read_libraries_from_excel()
+                url = urls.get(current_library, "")
+                if url:
+                    owner, _, _ = parse_git_url(url)
 
             if owner:
                 # 根据owner确定仓库类型
-                if "openharmony-sig" in owner:
+                if "openharmony-sig" in owner.lower():
                     repo_type = "sig"
                     signing_config = SIGNING_CONFIG_SIG
                     bundle_name = BUNDLE_NAME_SIG
-                elif "openharmony-tpc" in owner:
+                elif "openharmony-tpc" in owner.lower():
                     # 进一步区分是tpc还是samples
                     _, _, urls = read_libraries_from_excel()
                     url = urls.get(current_library, "")
-
-                    if "openharmony_tpc_samples" in url:
+                    if url and "openharmony_tpc_samples" in url.lower():
                         repo_type = "samples"
                         signing_config = SIGNING_CONFIG_SAMPLES
                         bundle_name = BUNDLE_NAME_SAMPLES
