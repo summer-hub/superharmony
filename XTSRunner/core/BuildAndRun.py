@@ -6,14 +6,13 @@ import re
 import time
 from colorama import  Fore
 from reports.ExtractTestDetails import extract_test_details, display_test_details
-from core.ModfyConfig import _run_config_scripts, _determine_repo_type_and_config
+from core.ModfyConfig import _run_config_scripts
 from reports.ReportGenerator import generate_reports
-from utils.config import PROJECT_DIR, ohpm_path, node_path, hvigor_path, get_release_mode
+from utils.config import PROJECT_DIR, ohpm_path, BUNDLE_NAME_SIG, node_path, hvigor_path, get_release_mode
 from core.ReadExcel import get_repo_info
 
 
 def clone_and_build(library_name):
-    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
     """克隆仓库并构建项目，返回测试结果"""
     try:
         # 准备工作
@@ -29,7 +28,7 @@ def clone_and_build(library_name):
                     "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
                     "class_times": {"ErrorTestClass": 1}}
             
-        print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}, bundle_name ={BUNDLE_NAME}")
+        print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}")
         
         # 1. 创建并进入Libraries目录
         libraries_dir = os.path.abspath(os.path.join(os.getcwd(), "Libraries"))
@@ -301,7 +300,6 @@ def _build_release():
 
 def run_xts(library_name=None):
     """运行XTS测试套件，返回测试输出结果"""
-    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
     try:
         # 获取原始库名
         from core.ReadExcel import read_libraries_from_excel
@@ -350,7 +348,7 @@ def run_xts(library_name=None):
         tmp_dir = "data/local/tmp/24141c3f96304b23aec112d51ed45ca5"
 
         # 卸载已有应用
-        subprocess.run(["hdc", "uninstall", BUNDLE_NAME], check=True)
+        subprocess.run(["hdc", "uninstall", BUNDLE_NAME_SIG], check=True)
         
         # 创建临时目录
         subprocess.run(["hdc", "shell", "mkdir", tmp_dir], check=True)
@@ -427,7 +425,6 @@ def run_xts(library_name=None):
         return f"XTS测试失败: {e}"  # 返回错误信息
 
 def run_in_new_cmd(test_names, library_name):
-    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
     test_classes = ",".join(test_names)
     print(f"Running tests: {test_classes}")
 
@@ -472,7 +469,7 @@ def run_in_new_cmd(test_names, library_name):
         module_name = "entry_test"
 
     # 使用检测到的路径执行测试
-    cmd = (f'hdc shell aa test -b {BUNDLE_NAME} -m {module_name} '
+    cmd = (f'hdc shell aa test -b {BUNDLE_NAME_SIG} -m {module_name} '
            f'-s unittest /ets/{runner_dir}/OpenHarmonyTestRunner -s class {test_classes} -s timeout 15000')
 
     print(f"执行测试命令: {cmd}")
@@ -642,6 +639,13 @@ def _clone_repo(library_name):
         else:
             print(f"目录 {target_dir} 已存在，跳过克隆")
             return True
+
+    # 设置Windows长路径支持
+    try:
+        subprocess.run(["git", "config", "--system", "core.longpaths", "true"], check=True)
+        print("已设置 git core.longpaths 为 true")
+    except Exception as e:
+        print(f"设置 git core.longpaths 失败（可能需要管理员权限，可忽略）: {e}")
 
     # 构建克隆命令
     cmd = ["git", "clone", clone_url]

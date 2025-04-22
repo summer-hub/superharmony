@@ -3,8 +3,8 @@ import re
 import json
 import shutil
 
-from core.ReadExcel import get_repo_info, read_libraries_from_excel, parse_git_url
-from utils.config import selected_sdk_version
+from core.ReadExcel import get_repo_info, read_libraries_from_excel, parse_git_url, fuzzy_match_libraries
+from config import selected_sdk_version
 
 
 def _run_config_scripts():
@@ -12,7 +12,7 @@ def _run_config_scripts():
     print("开始更新项目配置...")
 
     # 重新导入以确保获取最新的值
-    from utils.config import selected_sdk_version, selected_api_version
+    from config import selected_sdk_version, selected_api_version
 
     if not selected_sdk_version or not selected_api_version:
         print("错误：未设置SDK版本，请确保在主程序开始时输入了正确的SDK版本")
@@ -422,8 +422,8 @@ def _update_config():
 def _determine_repo_type_and_config():
     """根据当前库的仓库类型选择签名配置和包名"""
     # 导入配置
-    from utils.config import SIGNING_CONFIG_SIG, SIGNING_CONFIG_TPC, SIGNING_CONFIG_SAMPLES
-    from utils.config import BUNDLE_NAME_SIG, BUNDLE_NAME_TPC, BUNDLE_NAME_SAMPLES
+    from config import SIGNING_CONFIG_SIG, SIGNING_CONFIG_TPC, SIGNING_CONFIG_SAMPLES
+    from config import BUNDLE_NAME_SIG, BUNDLE_NAME_TPC, BUNDLE_NAME_SAMPLES
 
     try:
         # 获取当前库名
@@ -437,7 +437,7 @@ def _determine_repo_type_and_config():
         if current_library:
             # 使用ReadExcel.py中的get_repo_info获取仓库信息
             owner, _, _ = get_repo_info(current_library)
-            
+
             # 如果无法通过get_repo_info获取owner，尝试直接从URL解析
             if not owner:
                 _, _, urls = read_libraries_from_excel()
@@ -463,6 +463,31 @@ def _determine_repo_type_and_config():
                         repo_type = "tpc"
                         signing_config = SIGNING_CONFIG_TPC
                         bundle_name = BUNDLE_NAME_TPC
+                try:
+                    # 尝试模糊匹配库名
+                    matched_libraries = fuzzy_match_libraries(current_library)
+                    if matched_libraries:
+                        # 使用第一个匹配的库来确定类型
+                        matched_lib = matched_libraries[0]
+                        owner, _, _ = get_repo_info(matched_lib)
+                        if owner:
+                            if "openharmony-sig" in owner:
+                                repo_type = "sig"
+                                signing_config = SIGNING_CONFIG_SIG
+                                bundle_name = BUNDLE_NAME_SIG
+                            elif "openharmony-tpc" in owner:
+                                _, _, urls = read_libraries_from_excel()
+                                url = urls.get(matched_lib, "")
+                                if "openharmony_tpc_samples" in url:
+                                    repo_type = "samples"
+                                    signing_config = SIGNING_CONFIG_SAMPLES
+                                    bundle_name = BUNDLE_NAME_SAMPLES
+                                else:
+                                    repo_type = "tpc"
+                                    signing_config = SIGNING_CONFIG_TPC
+                                    bundle_name = BUNDLE_NAME_TPC
+                except Exception as e:
+                    print(f"模糊匹配库时出错: {str(e)}")
                 else:
                     # 默认归类为tpc
                     repo_type = "tpc"

@@ -3,7 +3,7 @@ import re
 import json
 import shutil
 
-from core.ReadExcel import get_repo_info, read_libraries_from_excel, parse_git_url, fuzzy_match_libraries
+from core.ReadExcel import get_repo_info, read_libraries_from_excel, parse_git_url
 from utils.config import selected_sdk_version
 
 
@@ -437,25 +437,19 @@ def _determine_repo_type_and_config():
         if current_library:
             # 使用ReadExcel.py中的get_repo_info获取仓库信息
             owner, _, _ = get_repo_info(current_library)
-            
-            # 如果无法通过get_repo_info获取owner，尝试直接从URL解析
-            if not owner:
-                _, _, urls = read_libraries_from_excel()
-                url = urls.get(current_library, "")
-                if url:
-                    owner, _, _ = parse_git_url(url)
 
             if owner:
                 # 根据owner确定仓库类型
-                if "openharmony-sig" in owner.lower():
+                if "openharmony-sig" in owner:
                     repo_type = "sig"
                     signing_config = SIGNING_CONFIG_SIG
                     bundle_name = BUNDLE_NAME_SIG
-                elif "openharmony-tpc" in owner.lower():
+                elif "openharmony-tpc" in owner:
                     # 进一步区分是tpc还是samples
                     _, _, urls = read_libraries_from_excel()
                     url = urls.get(current_library, "")
-                    if url and "openharmony_tpc_samples" in url.lower():
+
+                    if "openharmony_tpc_samples" in url:
                         repo_type = "samples"
                         signing_config = SIGNING_CONFIG_SAMPLES
                         bundle_name = BUNDLE_NAME_SAMPLES
@@ -463,31 +457,6 @@ def _determine_repo_type_and_config():
                         repo_type = "tpc"
                         signing_config = SIGNING_CONFIG_TPC
                         bundle_name = BUNDLE_NAME_TPC
-                try:
-                    # 尝试模糊匹配库名
-                    matched_libraries = fuzzy_match_libraries(current_library)
-                    if matched_libraries:
-                        # 使用第一个匹配的库来确定类型
-                        matched_lib = matched_libraries[0]
-                        owner, _, _ = get_repo_info(matched_lib)
-                        if owner:
-                            if "openharmony-sig" in owner:
-                                repo_type = "sig"
-                                signing_config = SIGNING_CONFIG_SIG
-                                bundle_name = BUNDLE_NAME_SIG
-                            elif "openharmony-tpc" in owner:
-                                _, _, urls = read_libraries_from_excel()
-                                url = urls.get(matched_lib, "")
-                                if "openharmony_tpc_samples" in url:
-                                    repo_type = "samples"
-                                    signing_config = SIGNING_CONFIG_SAMPLES
-                                    bundle_name = BUNDLE_NAME_SAMPLES
-                                else:
-                                    repo_type = "tpc"
-                                    signing_config = SIGNING_CONFIG_TPC
-                                    bundle_name = BUNDLE_NAME_TPC
-                except Exception as e:
-                    print(f"模糊匹配库时出错: {str(e)}")
                 else:
                     # 默认归类为tpc
                     repo_type = "tpc"

@@ -4,44 +4,42 @@ import shutil
 import subprocess
 import re
 import time
-from colorama import  Fore
+from colorama import Fore
 from ExtractTestDetails import extract_test_details, display_test_details
-from ModfyConfig import _run_config_scripts, _determine_repo_type_and_config
+from core.ModfyConfig import _run_config_scripts, _determine_repo_type_and_config
 from ReportGenerator import generate_reports
-from config import PROJECT_DIR, ohpm_path, BUNDLE_NAME_SIG, node_path, hvigor_path, get_release_mode
-from ReadExcel import get_repo_info
+from config import PROJECT_DIR, ohpm_path, node_path, hvigor_path, get_release_mode
+from core.ReadExcel import get_repo_info
 
 
 def clone_and_build(library_name):
+    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
     """克隆仓库并构建项目，返回测试结果"""
     try:
         # 准备工作
         os.environ["GIT_CLONE_PROTECTION_ACTIVE"] = "false"
-        
+
         # 从ReadExcel获取仓库信息
         owner, name, sub_dir = get_repo_info(library_name)
-        
+
         if not owner or not name:
             print(f"错误：无法获取库 {library_name} 的仓库信息")
             # 修改为返回error状态
-            return {"test_results": {"ErrorTestClass": [{"name": "errorTest", "status": "error", "time": "1ms", "error_message": "无法获取仓库信息"}]},
+            return {"test_results": {"ErrorTestClass": [
+                {"name": "errorTest", "status": "error", "time": "1ms", "error_message": "无法获取仓库信息"}]},
                     "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
                     "class_times": {"ErrorTestClass": 1}}
 
-        # 获取动态bundle_name
-        global BUNDLE_NAME
-        _, _, BUNDLE_NAME = _determine_repo_type_and_config()
-            
         print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}, bundle_name ={BUNDLE_NAME}")
-        
+
         # 1. 创建并进入Libraries目录
         libraries_dir = os.path.abspath(os.path.join(os.getcwd(), "Libraries"))
         os.makedirs(libraries_dir, exist_ok=True)
         os.chdir(libraries_dir)
-        
+
         # 2. 克隆或更新仓库
         _clone_repo(library_name)
-        
+
         # 3. 进入项目目录
         # 特殊处理aki库，需要进入到特定的单元测试目录
         if name == "aki":
@@ -49,10 +47,10 @@ def clone_and_build(library_name):
             print(Fore.YELLOW + f"检测到aki库，将进入特定目录: {target_dir}" + Fore.RESET)
         else:
             target_dir = name if not sub_dir else os.path.join(name, sub_dir)
-            
+
         if not os.path.exists(target_dir):
             raise FileNotFoundError(f"目标目录 {target_dir} 不存在")
-            
+
         os.chdir(target_dir)
         print(f"当前工作目录: {os.getcwd()}")
 
@@ -77,23 +75,23 @@ def clone_and_build(library_name):
             if os.path.exists(obfuscation_file):
                 with open(obfuscation_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                
+
                 # 获取当前库的依赖项
                 dependencies = _get_ohos_name(library_name)
-                
+
                 # 检查是否已包含必要的-keep规则
                 needs_update = False
                 for dep in dependencies:
                     if f"-keep ./oh_modules/{dep}" not in content:
                         needs_update = True
                         break
-                
+
                 if needs_update:
                     print(Fore.YELLOW + "添加必要的-keep规则到混淆文件..." + Fore.RESET)
                     with open(obfuscation_file, 'a', encoding='utf-8') as f:
                         for dep in dependencies:
                             f.write(f"\n-keep\n./oh_modules/{dep}\n")
-            
+
             # 执行debug模式构建
             subprocess.run([
                 node_path,
@@ -123,14 +121,16 @@ def clone_and_build(library_name):
         else:
             print(Fore.RED + "未找到可执行的测试用例" + Fore.RESET)
             # 修改为返回error状态
-            return {"test_results": {"ErrorTestClass": [{"name": "noTestsFound", "status": "error", "time": "1ms", "error_message": "未找到可执行的测试用例"}]},
+            return {"test_results": {"ErrorTestClass": [
+                {"name": "noTestsFound", "status": "error", "time": "1ms", "error_message": "未找到可执行的测试用例"}]},
                     "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
                     "class_times": {"ErrorTestClass": 1}}
 
     except subprocess.CalledProcessError as e:
         print(f"执行命令失败: {e}")
         # 修改为返回error状态而非passed状态
-        return {"test_results": {"ErrorTestClass": [{"name": "errorTest", "status": "error", "time": "1ms", "error_message": str(e)}]},
+        return {"test_results": {
+            "ErrorTestClass": [{"name": "errorTest", "status": "error", "time": "1ms", "error_message": str(e)}]},
                 "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
                 "class_times": {"ErrorTestClass": 1}}
     finally:
@@ -138,12 +138,12 @@ def clone_and_build(library_name):
         os.chdir(PROJECT_DIR)
 
 
-
 def _install_ohpm_dependencies():
     """安装ohpm依赖"""
     ohpm_registries = "https://ohpm.openharmony.cn/ohpm/"
     subprocess.run([ohpm_path, "install", "--all", "--registry", ohpm_registries, "--strict_ssl", "false"],
                    check=True)
+
 
 def _build_project():
     """构建项目"""
@@ -161,13 +161,13 @@ def _build_project():
     # 检查项目结构，确定是否存在sharedLibrary模块
     has_shared_library = os.path.exists("sharedlibrary") or os.path.exists("sharedLibrary")
     shared_library_name = None
-    
+
     # 确定正确的sharedLibrary目录名称（大小写敏感）
     if os.path.exists("sharedlibrary"):
         shared_library_name = "sharedlibrary"
     elif os.path.exists("sharedLibrary"):
         shared_library_name = "sharedLibrary"
-    
+
     print(f"检测到{'存在' if has_shared_library else '不存在'} sharedLibrary 模块")
 
     # 根据项目结构选择构建命令
@@ -199,6 +199,7 @@ def _build_project():
                         "assembleHap", *build_args, "--daemon"
                         ], check=True)
 
+
 def _get_ohos_name(library_name):
     """获取oh-package.json5中的主模块名称"""
     try:
@@ -206,28 +207,29 @@ def _get_ohos_name(library_name):
         special_libs = {
             "aki": "platform/ohos/publish/aki/oh-package.json5"
         }
-        
+
         # 确定oh-package.json5路径
         if library_name in special_libs:
             package_path = os.path.join(os.getcwd(), special_libs[library_name])
         else:
             package_path = os.path.join(os.getcwd(), "oh-package.json5")
-            
+
         if not os.path.exists(package_path):
             return ""
-            
+
         with open(package_path, 'r', encoding='utf-8') as f:
             content = f.read()
-            
+
         # 解析主模块名称
         main_pattern = r'"name":\s*"(@ohos/[a-zA-Z0-9_-]+)"'
         match = re.search(main_pattern, content)
-        
+
         return match.group(1) if match else ""
-        
+
     except Exception as e:
         print(f"获取oh-package.json5主模块名称失败: {e}")
         return ""
+
 
 def _build_release():
     """构建项目为release模式"""
@@ -237,22 +239,22 @@ def _build_release():
         if os.path.exists(obfuscation_file):
             with open(obfuscation_file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
-            
+
             modified = False
             new_lines = []
             i = 0
             while i < len(lines):
-                if (isinstance(lines[i], str) and lines[i].strip() == "-keep" and 
-                    i+1 < len(lines) and 
-                    isinstance(lines[i+1], str) and 
-                    lines[i+1].strip().startswith("./oh_modules/@ohos/")):
+                if (isinstance(lines[i], str) and lines[i].strip() == "-keep" and
+                        i + 1 < len(lines) and
+                        isinstance(lines[i + 1], str) and
+                        lines[i + 1].strip().startswith("./oh_modules/@ohos/")):
                     # Skip both lines
                     i += 2
                     modified = True
                 else:
                     new_lines.append(lines[i])
                     i += 1
-            
+
             if modified:
                 with open(obfuscation_file, 'w', encoding='utf-8') as f:
                     f.writelines(new_lines)
@@ -302,13 +304,15 @@ def _build_release():
         print(Fore.RED + f"Release模式构建失败: {e}" + Fore.RESET)
         raise
 
+
 def run_xts(library_name=None):
     """运行XTS测试套件，返回测试输出结果"""
+    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
     try:
         # 获取原始库名
-        from ReadExcel import read_libraries_from_excel
+        from core.ReadExcel import read_libraries_from_excel
         libraries, original_name, urls = read_libraries_from_excel(library_name)
-        
+
         # 1.同步项目
         subprocess.run([
             node_path, hvigor_path,
@@ -352,29 +356,29 @@ def run_xts(library_name=None):
         tmp_dir = "data/local/tmp/24141c3f96304b23aec112d51ed45ca5"
 
         # 卸载已有应用
-        subprocess.run(["hdc", "uninstall", BUNDLE_NAME_SIG], check=True)
-        
+        subprocess.run(["hdc", "uninstall", BUNDLE_NAME], check=True)
+
         # 创建临时目录
         subprocess.run(["hdc", "shell", "mkdir", tmp_dir], check=True)
-        
+
         # 发送entry模块HAP文件
         subprocess.run([
             "hdc", "file", "send",
             "entry\\build\\default\\outputs\\default\\entry-default-signed.hap",
             tmp_dir
         ], check=True)
-        
+
         # 发送测试HAP文件
         subprocess.run([
             "hdc", "file", "send",
             "entry\\build\\default\\outputs\\ohosTest\\entry-ohosTest-signed.hap",
             tmp_dir
         ], check=True)
-        
+
         # 检查是否存在sharedLibrary模块
         has_shared_library = False
         shared_library_path = None
-        
+
         # 检查不同大小写的sharedLibrary目录
         if os.path.exists("sharedlibrary"):
             shared_library_path = "sharedlibrary\\build\\default\\outputs\\default\\sharedlibrary-default-signed.hsp"
@@ -382,7 +386,7 @@ def run_xts(library_name=None):
         elif os.path.exists("sharedLibrary"):
             shared_library_path = "sharedLibrary\\build\\default\\outputs\\default\\sharedLibrary-default-signed.hsp"
             has_shared_library = os.path.exists(shared_library_path)
-        
+
         # 如果存在sharedLibrary模块，发送HSP文件
         if has_shared_library and shared_library_path:
             print(f"检测到sharedLibrary模块，发送HSP文件: {shared_library_path}")
@@ -394,10 +398,10 @@ def run_xts(library_name=None):
                 ], check=True)
             except subprocess.CalledProcessError as e:
                 print(f"警告: 发送sharedLibrary HSP文件失败: {e}")
-        
+
         # 安装应用
         subprocess.run(["hdc", "shell", "bm", "install", "-p", tmp_dir], check=True)
-        
+
         # 清理临时目录
         subprocess.run(["hdc", "shell", "rm", "-rf", tmp_dir], check=True)
 
@@ -406,19 +410,19 @@ def run_xts(library_name=None):
         print(f"测试名称: {test_names}")
         if test_names:
             output = run_in_new_cmd(test_names, original_name)  # 使用original_name
-            
+
             # 修改这里，直接传递原始输出字符串，不调用display_test_tree
             # display_test_tree(output)
-            
+
             # 从输出中提取测试结果并显示
             extracted_data = extract_test_details(output)
             test_results = extracted_data["test_results"]
             summary = extracted_data["summary"]
             class_times = extracted_data["class_times"]
-            
+
             # 使用ExtractTestDetails.py中的函数显示测试树
             display_test_details(test_results, summary, class_times)
-            
+
             return output
         else:
             print(Fore.RED + "未找到可执行的测试用例" + Fore.RESET)
@@ -428,7 +432,9 @@ def run_xts(library_name=None):
         print(f"XTS测试失败: {e}")
         return f"XTS测试失败: {e}"  # 返回错误信息
 
+
 def run_in_new_cmd(test_names, library_name):
+    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
     test_classes = ",".join(test_names)
     print(f"Running tests: {test_classes}")
 
@@ -461,7 +467,7 @@ def run_in_new_cmd(test_names, library_name):
             module_data = json.load(module_file)
             module_name = module_data.get("module", {}).get("name", "entry_test")
             abilities = module_data.get("module", {}).get("abilities", [])
-            
+
             # 处理abilities中的srcEntrance
             for ability in abilities:
                 if "srcEntrance" in ability:
@@ -473,7 +479,7 @@ def run_in_new_cmd(test_names, library_name):
         module_name = "entry_test"
 
     # 使用检测到的路径执行测试
-    cmd = (f'hdc shell aa test -b {BUNDLE_NAME_SIG} -m {module_name} '
+    cmd = (f'hdc shell aa test -b {BUNDLE_NAME} -m {module_name} '
            f'-s unittest /ets/{runner_dir}/OpenHarmonyTestRunner -s class {test_classes} -s timeout 15000')
 
     print(f"执行测试命令: {cmd}")
@@ -495,8 +501,9 @@ def run_in_new_cmd(test_names, library_name):
 
     # 生成测试报告
     generate_reports(test_names, result.stdout, library_name)
-    
+
     return result.stdout
+
 
 def extract_test_names():
     """提取测试目录下所有.test.ets文件中的测试函数名称（递归查找），并排除被注释掉的测试"""
@@ -611,6 +618,7 @@ def extract_test_names():
     print(f"总共找到{len(test_names)}个有效的唯一测试名称")
     return test_names
 
+
 def _clone_repo(library_name):
     """处理带子模块的仓库克隆"""
     # 获取仓库信息
@@ -622,7 +630,7 @@ def _clone_repo(library_name):
     # 需要递归克隆的仓库列表
     recurse_repos = {
         "openharmony_tpc_samples",
-        "ohos_grpc_node", 
+        "ohos_grpc_node",
         "ohos_mqtt",
         "ohos_coap",
         "mp4parser",
@@ -643,13 +651,6 @@ def _clone_repo(library_name):
         else:
             print(f"目录 {target_dir} 已存在，跳过克隆")
             return True
-
-    # 设置Windows长路径支持
-    try:
-        subprocess.run(["git", "config", "--system", "core.longpaths", "true"], check=True)
-        print("已设置 git core.longpaths 为 true")
-    except Exception as e:
-        print(f"设置 git core.longpaths 失败（可能需要管理员权限，可忽略）: {e}")
 
     # 构建克隆命令
     cmd = ["git", "clone", clone_url]
@@ -674,7 +675,7 @@ def _clone_repo(library_name):
             # 确保子模块初始化
             if name not in recurse_repos or sub_dir:
                 subprocess.run(["git", "submodule", "update", "--init", "--recursive"], check=True)
-            
+
             # 重置工作区
             subprocess.run(["git", "checkout", "."], check=True)
         finally:
