@@ -2,7 +2,6 @@ import threading
 
 from reports.ExtractTestDetails import extract_test_details
 from reports.GenerateTestReport import generate_test_report
-from reports.GenerateAllureReport import generate_allure_report
 from reports.GenerateHtmlReport import generate_html_report, update_overall_results
 
 import sys
@@ -51,7 +50,7 @@ def set_parallel_mode(is_parallel, total_processes=0):
     parallel_total_count = total_processes
     parallel_completed_count = 0
 
-def generate_reports(test_names, output, original_name):
+def generate_reports(output, original_name):
     """
     生成测试报告并更新总体测试结果
 
@@ -94,15 +93,11 @@ def generate_reports(test_names, output, original_name):
 
         try:
             # 生成HTML详细报告
-            generate_test_report(test_names, output, original_name)  # 使用original_name而不是library_name
+            generate_test_report(output, original_name)  # 使用original_name而不是library_name
         except Exception as html_err:
             print(f"生成HTML报告时出错: {str(html_err)}")
         
-        try:
-            # 生成Allure报告
-            generate_allure_report(test_results, original_name)  # 使用original_name而不是library_name
-        except Exception as allure_err:
-            print(f"生成Allure报告时出错: {str(allure_err)}")
+        # Skip Allure report generation
         
         # 更新总体结果
         lib_status = "passed" if summary["failed"] == 0 and summary["error"] == 0 else "failed"
@@ -140,7 +135,6 @@ def generate_final_report():
     """在所有库测试完成后生成最终的HTML总览报告"""
     try:
         global all_libraries_results
-        
         # 在所有库测试完成后生成最终报告并自动打开
         report_path = generate_html_report(all_libraries_results)
         if report_path and os.path.exists(report_path):

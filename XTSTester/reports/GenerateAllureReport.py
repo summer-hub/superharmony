@@ -11,7 +11,7 @@ def generate_allure_report(test_data, library_name):
     try:
         # 确保allure-results目录存在
         os.makedirs(ALLURE_RESULTS_DIR, exist_ok=True)
-        
+
         # 检查test_data的格式并提取test_results
         if isinstance(test_data, dict) and "test_results" in test_data:
             # 如果传入的是extract_test_details返回的完整字典
@@ -21,7 +21,7 @@ def generate_allure_report(test_data, library_name):
             # 向后兼容：如果直接传入了test_results
             test_results = test_data
             summary = {}
-        
+
         # 确保test_results是字典类型
         if not isinstance(test_results, dict):
             print(f"警告：库 {library_name} 的测试结果不是有效的字典格式")
@@ -33,9 +33,10 @@ def generate_allure_report(test_data, library_name):
 
         # 创建库级别的测试套件结果
         lib_total = sum(len(tests) for tests in test_results.values())
-        lib_passed = sum(1 for cls in test_results.values() for test in cls if isinstance(test, dict) and test.get('status') == 'passed')
+        lib_passed = sum(1 for cls in test_results.values() for test in cls if
+                         isinstance(test, dict) and test.get('status') == 'passed')
         lib_failed = lib_total - lib_passed
-        
+
         # 修改状态判断逻辑：当总测试数为0时，状态应为"unknown"，与HTML报告保持一致
         if lib_total == 0:
             lib_status = "unknown"
@@ -53,8 +54,11 @@ def generate_allure_report(test_data, library_name):
             "start": int(time.time() * 1000),
             "stop": int(time.time() * 1000) + 1000,  # 假设套件执行时间为1秒
             "labels": [
+                {"name": "epic", "value": "OpenHarmony TPC"},
+                {"name": "feature", "value": library_name},
                 {"name": "suite", "value": library_name},
-                {"name": "package", "value": library_name}
+                {"name": "package", "value": "openharmony_tpc_samples" if "openharmony_tpc_samples" in library_name.lower() else library_name},
+                {"name": "severity", "value": "normal"}
             ],
             "statusDetails": {
                 "message": f"总计: {lib_passed}/{lib_total} 测试通过, {lib_failed} 失败"
@@ -65,7 +69,7 @@ def generate_allure_report(test_data, library_name):
         if lib_total == 0:
             test_uuid = str(uuid.uuid4())
             result_file = os.path.join(ALLURE_RESULTS_DIR, f"{test_uuid}-result.json")
-            
+
             test_result = {
                 "uuid": test_uuid,
                 "historyId": f"{library_name}_no_tests",
@@ -86,11 +90,11 @@ def generate_allure_report(test_data, library_name):
                     "trace": "可能原因：库构建失败、没有测试用例或测试框架问题"
                 }
             }
-            
+
             # 写入测试结果文件
             with open(result_file, 'w', encoding='utf-8') as f:
                 json.dump(test_result, f, ensure_ascii=False, indent=2)
-                
+
             print(f"为库 {library_name} 创建了未执行测试的Allure记录")
             return
 
@@ -100,7 +104,7 @@ def generate_allure_report(test_data, library_name):
             if not isinstance(tests, list):
                 print(f"警告：库 {library_name} 的测试类 {test_class} 的测试结果不是有效的列表格式")
                 continue  # 跳过无效的测试类
-                
+
             for test in tests:
                 # 增加类型检查，确保test是字典类型
                 if not isinstance(test, dict):
@@ -119,10 +123,10 @@ def generate_allure_report(test_data, library_name):
 
                 # 生成测试的UUID
                 test_uuid = str(uuid.uuid4())
-                
+
                 # 创建Allure结果文件
                 result_file = os.path.join(ALLURE_RESULTS_DIR, f"{test_uuid}-result.json")
-                
+
                 # 准备测试结果数据
                 test_result = {
                     "uuid": test_uuid,
@@ -134,26 +138,36 @@ def generate_allure_report(test_data, library_name):
                     "start": int(time.time() * 1000),
                     "stop": int(time.time() * 1000) + test_time_ms,
                     "labels": [
+                        {"name": "epic", "value": "OpenHarmony TPC"},
+                        {"name": "feature", "value": library_name},
+                        {"name": "story", "value": test_class},
                         {"name": "suite", "value": library_name},
                         {"name": "package", "value": library_name},
                         {"name": "testClass", "value": test_class},
-                        {"name": "testMethod", "value": test_name}
-                    ]
+                        {"name": "testMethod", "value": test_name},
+                        {"name": "parentSuite", "value": "openharmony_tpc_samples" if "openharmony_tpc_samples" in library_name.lower() else ""},
+                        {"name": "severity", "value": test.get('severity', 'normal')}
+                    ],
+                    "description": test.get('description', ''),
+                    "links": [
+                        {"name": "testcase", "url": test.get('testcase_url', '')},
+                        {"name": "issue", "url": test.get('issue_url', '')}
+                    ] if any(key in test for key in ['testcase_url', 'issue_url']) else []
                 }
-                
+
                 # 如果测试失败，添加错误信息
                 if test_status == "failed" and 'error_stack' in test:
                     test_result["statusDetails"] = {
                         "message": test.get('error_message', '测试失败'),
                         "trace": test.get('error_stack', '')
                     }
-                
+
                 # 写入测试结果文件
                 with open(result_file, 'w', encoding='utf-8') as f:
                     json.dump(test_result, f, ensure_ascii=False, indent=2)  # type: ignore
-        
+
         print(f"已为库 {library_name} 生成Allure报告数据")
-        
+
     except Exception as e:
         print(f"生成库 {library_name} 的Allure报告时出错: {str(e)}")
         import traceback

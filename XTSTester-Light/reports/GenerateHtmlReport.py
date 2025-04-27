@@ -10,18 +10,22 @@ colorama.init()
 from utils.config import HTML_REPORT_DIR, OVERALL_RESULTS_FILE
 from core.ReadExcel import get_repo_info
 
+
 # 定义彩色输出函数
 def print_error(message):
     """打印红色错误信息"""
     print(f"{colorama.Fore.RED}{message}{colorama.Style.RESET_ALL}")
 
+
 def print_warning(message):
     """打印黄色警告信息"""
     print(f"{colorama.Fore.YELLOW}{message}{colorama.Style.RESET_ALL}")
 
+
 def print_success(message):
     """打印绿色成功信息"""
     print(f"{colorama.Fore.GREEN}{message}{colorama.Style.RESET_ALL}")
+
 
 def update_overall_results(overall_results):
     """更新总体结果文件"""
@@ -31,49 +35,76 @@ def update_overall_results(overall_results):
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
             print(f"创建目录: {results_dir}")
-        
+
         # 保存总体结果到JSON文件
         with open(OVERALL_RESULTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(overall_results, f, ensure_ascii=False, indent=2) # type: ignore
-            
+            json.dump(overall_results, f, ensure_ascii=False, indent=2)  # type: ignore
+
     except Exception as e:
         print_error(f"更新总体结果文件时出错: {str(e)}")
+
 
 def generate_html_report(overall_results):
     """生成详细的HTML测试报告"""
     try:
         print("生成详细HTML测试报告...")
-        
+
         # 获取当前时间作为报告时间
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        
+
         # 按仓库类型分组库
         repo_groups = defaultdict(lambda: defaultdict(list))
-        
+
         for lib in overall_results.get("libraries", []):
-            lib_name = lib.get("name", "")
+            # 处理库名 - 从original_name中提取
+            original_name = lib.get("original_name", "")
+            if isinstance(original_name, dict) and 'name' in original_name:
+                lib_name = original_name['name']
+            elif isinstance(original_name, str):
+                lib_name = original_name
+            else:
+                # 如果original_name不可用，回退到name
+                lib_name = lib.get("name", "")
+                if isinstance(lib_name, dict) and 'name' in lib_name:
+                    lib_name = lib_name['name']
+                elif not isinstance(lib_name, str):
+                    lib_name = str(lib_name)
+            
             owner, repo_name, sub_dir = get_repo_info(lib_name)
             if owner and repo_name:  # Only proceed if we got valid repo info
-                
+
                 # 特殊处理openharmony_tpc_samples仓库
                 if repo_name == "openharmony_tpc_samples" and sub_dir:
                     repo_groups[owner]["openharmony_tpc_samples"].append((lib_name, lib, sub_dir))
                 else:
                     repo_groups[owner][repo_name].append((lib_name, lib, ""))
-        
+
         # 生成每个库的单独报告
         for lib in overall_results.get("libraries", []):
             try:
-                lib_name = lib.get("name", "")
-                if not lib_name:
-                    print_warning("警告: 发现没有名称的库，跳过生成报告")
+                # 处理库名 - 从original_name中提取
+                original_name = lib.get("original_name", "")
+                if isinstance(original_name, dict) and 'name' in original_name:
+                    lib_name = original_name['name']
+                elif isinstance(original_name, str):
+                    lib_name = original_name
+                else:
+                    # 如果original_name不可用，回退到name
+                    lib_name = lib.get("name", "")
+                    if isinstance(lib_name, dict) and 'name' in lib_name:
+                        lib_name = lib_name['name']
+                    elif not isinstance(lib_name, str):
+                        lib_name = str(lib_name)
+                
+                if not lib_name or lib_name == '未知库':
+                    print_warning(f"警告: 发现没有名称的库 ({lib}), 跳过生成报告")
                     continue
-                    
+
                 # Get URL from repo info
-                owner, repo_name, sub_dir = get_repo_info(lib_name)
+                owner, repo_name, sub_dir = get_repo_info(str(lib_name))  # Ensure lib_name is string
                 url = f"https://gitcode.com/{owner}/{repo_name}" if owner and repo_name else ""
                 lib_report_path = generate_library_report(lib, lib_name, url, HTML_REPORT_DIR)
-                
+
                 # 只有当报告路径有效时才添加到库信息中
                 if lib_report_path:
                     lib["report_path"] = os.path.relpath(lib_report_path, HTML_REPORT_DIR)
@@ -82,7 +113,7 @@ def generate_html_report(overall_results):
             except Exception as e:
                 print_error(f"处理库 {lib.get('name', '未知库')} 报告时出错: {str(e)}")
                 # 继续处理下一个库，不中断整体报告生成
-        
+
         # 生成总体报告
         try:
             main_report_path = generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT_DIR)
@@ -97,44 +128,49 @@ def generate_html_report(overall_results):
             print_error(f"生成主报告时出错: {str(e)}")
             # 返回默认报告路径，即使生成失败
             return os.path.join(HTML_REPORT_DIR, "index.html")
-        
+
     except Exception as e:
         print_error(f"生成HTML报告时出错: {str(e)}")
         # 不打印完整的堆栈跟踪，只显示简单的错误信息
         return None
 
-def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
+
+def generate_library_report(lib, lib_name_param, url, HTML_REPORT_DIR):
     """为单个库生成HTML报告"""
+    lib_name = lib_name_param if isinstance(lib_name_param, str) else lib_name_param.get('name', '未知库')
     try:
+        if lib_name == '未知库' and isinstance(lib_name_param, dict):
+            print_warning(f"警告: 库字典 {lib_name_param} 中缺少 'name' 键")
+
         # 类型检查
         if not isinstance(lib, dict):
             print_error(f"错误: 库 {lib_name} 的数据不是有效的字典格式")
             return None
-            
+
         # 创建库报告目录
         lib_dir = os.path.join(HTML_REPORT_DIR, "libraries")
         if not os.path.exists(lib_dir):
             os.makedirs(lib_dir)
-        
+
         # 准备库报告数据
         lib_passed = lib.get("passed", 0)
         lib_failed = lib.get("failed", 0)
         lib_total = lib.get("total", 0)
-        
+
         # 修改状态判断逻辑：当总测试数为0时，状态应为"unknown"
         if lib_total == 0:
             lib_status = "unknown"
         else:
             lib_status = lib.get("status", "unknown")
-            
+
         pass_rate = (lib_passed / lib_total * 100) if lib_total > 0 else 0
-        
+
         # 获取仓库信息
         owner, repo_name, sub_dir = get_repo_info(lib_name)
         repo_info = f"{owner}/{repo_name}"
         if sub_dir:
             repo_info += f" (子目录: {sub_dir})"
-        
+
         # 生成测试类级别的HTML内容
         test_classes_html = ""
         if "test_results" in lib:
@@ -149,7 +185,7 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
                         class_passed = all(test.get('status') == 'passed' for test in tests if isinstance(test, dict))
                         class_status = "passed" if class_passed else "failed"
                         class_status_icon = "✓" if class_passed else "✗"
-                        
+
                         # 计算测试类的总执行时间，增加错误处理
                         class_time_ms = 0
                         for test in tests:
@@ -163,19 +199,19 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
                                 except (ValueError, TypeError):
                                     # 忽略无法解析的时间值
                                     pass
-                        
+
                         # 生成测试方法级别的HTML内容
                         test_methods_html = ""
                         for test in tests:
                             if not isinstance(test, dict):
                                 continue
-                                
+
                             test_name = test.get('name', 'unknown')
                             test_status = test.get('status', 'unknown')
                             test_time = test.get('time', '0ms')
                             test_status_icon = "✓" if test_status == "passed" else "✗"
                             test_status_class = "passed" if test_status == "passed" else "failed"
-                            
+
                             # 添加错误信息（如果有）
                             error_html = ""
                             if 'error_stack' in test and test['error_stack']:
@@ -184,7 +220,7 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
                                     <pre>{test['error_stack']}</pre>
                                 </div>
                                 """
-                            
+
                             test_methods_html += f"""
                             <tr class="{test_status_class}">
                                 <td><span class="status-icon">{test_status_icon}</span> {test_name}</td>
@@ -193,7 +229,7 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
                             </tr>
                             {error_html}
                             """
-                        
+
                         # 添加测试类信息
                         test_classes_html += f"""
                         <div class="test-class {class_status}">
@@ -221,7 +257,7 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
                     except Exception as e:
                         print_error(f"处理库 {lib_name} 的测试类 {test_class} 时出错: {str(e)}")
                         # 继续处理下一个测试类
-        
+
         # 生成库报告HTML
         lib_html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -359,13 +395,13 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
     <div class="back-link">
         <a href="../index.html">← 返回总体报告</a>
     </div>
-    
+
     <h1>测试报告 - {lib_name}</h1>
-    
+
     <div class="repo-info">
         <strong>仓库信息:</strong> <a href="{url}" target="_blank">{repo_info}</a>
     </div>
-    
+
     <div class="summary">
         <div class="summary-title">测试摘要</div>
         <div class="summary-item">
@@ -389,10 +425,10 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
             <span class="{lib_status}">{lib_status.upper()}</span>
         </div>
     </div>
-    
+
     <h2>测试详情</h2>
     {test_classes_html}
-    
+
     <script>
         function toggleTestClass(element) {{
             const testMethods = element.nextElementSibling;
@@ -402,7 +438,7 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
                 testMethods.style.display = "block";
             }}
         }}
-        
+
         // 页面加载时展开所有失败的测试类
         document.addEventListener('DOMContentLoaded', function() {{
             const failedClasses = document.querySelectorAll('.test-class.failed .test-class-header');
@@ -414,17 +450,21 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
 </body>
 </html>
         """
-        
+
         # 保存库报告
-        lib_report_path = os.path.join(lib_dir, f"{lib_name.replace(' ', '_')}.html")
+        # 确保 lib_name 是字符串类型
+        report_file_name = str(lib_name).replace(' ', '_')
+        lib_report_path = os.path.join(lib_dir, f"{report_file_name}.html")
         with open(lib_report_path, 'w', encoding='utf-8') as f:
             f.write(lib_html)
-        
+
         return lib_report_path
-    
+
     except Exception as e:
+        # 使用处理后的 lib_name 打印错误信息
         print_error(f"生成库报告时出错 ({lib_name}): {str(e)}")
         return None
+
 
 def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT_DIR):
     """生成主HTML报告"""
@@ -437,28 +477,28 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
         total_libs = overall_results.get("total_libs", 0)
         passed_libs = overall_results.get("passed_libs", 0)
         failed_libs = total_libs - passed_libs
-        unknown_libs = sum(1 for lib in overall_results.get("libraries", []) 
-                      if lib.get("total", 0) == 0)
-        
+        unknown_libs = sum(1 for lib in overall_results.get("libraries", [])
+                           if lib.get("total", 0) == 0)
+
         # 计算通过率
         test_pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
         lib_pass_rate = (passed_libs / total_libs * 100) if total_libs > 0 else 0
-        
+
         # 修复报告链接路径
         for lib in overall_results.get("libraries", []):
             if "report_path" in lib:
                 # 确保路径正确，不要包含重复的libraries目录
                 lib["report_path"] = lib["report_path"].replace("libraries/libraries/", "libraries/")
-        
+
         # 生成仓库分组的HTML内容
         repo_groups_html = ""
-        
+
         for owner in sorted(repo_groups.keys()):
             owner_html = f"""
             <div class="repo-owner">
                 <h2>{owner}</h2>
             """
-            
+
             for repo_name in sorted(repo_groups[owner].keys()):
                 repo_html = f"""
                 <div class="repo">
@@ -475,42 +515,48 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
                         </thead>
                         <tbody>
                 """
-                
+
                 # 特殊处理openharmony_tpc_samples仓库
                 if repo_name == "openharmony_tpc_samples":
                     # 按子目录分组
                     sub_dirs = defaultdict(list)
                     for lib_name, lib, sub_dir in repo_groups[owner][repo_name]:
                         sub_dirs[sub_dir].append((lib_name, lib))
-                    
+
                     for sub_dir in sorted(sub_dirs.keys()):
                         repo_html += f"""
                         <tr class="sub-dir-header">
                             <td colspan="5"><strong>子目录: {sub_dir}</strong></td>
                         </tr>
                         """
-                        
+
                         for lib_name, lib in sub_dirs[sub_dir]:
                             lib_passed = lib.get("passed", 0)
                             lib_total = lib.get("total", 0)
-                            
+
                             # 修改状态判断逻辑：当总测试数为0时，状态应为"unknown"
                             if lib_total == 0:
                                 lib_status = "unknown"
                             else:
                                 lib_status = lib.get("status", "unknown")
-                                
+
                             lib_pass_rate = (lib_passed / lib_total * 100) if lib_total > 0 else 0
-                            status_class = "passed" if lib_status == "passed" else ("unknown" if lib_status == "unknown" else "failed")
+                            status_class = "passed" if lib_status == "passed" else (
+                                "unknown" if lib_status == "unknown" else "failed")
                             report_path = lib.get("report_path", "")
                             
+                            # 确保使用字符串形式的库名
+                            display_name = lib_name
+                            if isinstance(display_name, dict) and 'name' in display_name:
+                                display_name = display_name['name']
+
                             repo_html += f"""
                             <tr class="{status_class}">
-                                <td>{lib_name}</td>
+                                <td>{display_name}</td>
                                 <td class="{status_class}">{lib_status.upper()}</td>
                                 <td>{lib_passed}/{lib_total}</td>
                                 <td>{lib_pass_rate:.2f}%</td>
-                                <td><a href="libraries/{lib_name.replace(' ', '_')}.html" class="view-report">查看报告</a></td>
+                                <td><a href="libraries/{str(display_name).replace(' ', '_')}.html" class="view-report">查看报告</a></td>
                             </tr>
                             """
                 else:
@@ -518,38 +564,44 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
                     for lib_name, lib, _ in repo_groups[owner][repo_name]:
                         lib_passed = lib.get("passed", 0)
                         lib_total = lib.get("total", 0)
-                        
+
                         # 修改状态判断逻辑：当总测试数为0时，状态应为"unknown"
                         if lib_total == 0:
                             lib_status = "unknown"
                         else:
                             lib_status = lib.get("status", "unknown")
-                            
+
                         lib_pass_rate = (lib_passed / lib_total * 100) if lib_total > 0 else 0
-                        status_class = "passed" if lib_status == "passed" else ("unknown" if lib_status == "unknown" else "failed")
+                        status_class = "passed" if lib_status == "passed" else (
+                            "unknown" if lib_status == "unknown" else "failed")
                         report_path = lib.get("report_path", "")
                         
+                        # 确保使用字符串形式的库名
+                        display_name = lib_name
+                        if isinstance(display_name, dict) and 'name' in display_name:
+                            display_name = display_name['name']
+
                         repo_html += f"""
                         <tr class="{status_class}">
-                            <td>{lib_name}</td>
+                            <td>{display_name}</td>
                             <td class="{status_class}">{lib_status.upper()}</td>
                             <td>{lib_passed}/{lib_total}</td>
                             <td>{lib_pass_rate:.2f}%</td>
                             <td><a href="{report_path}" class="view-report">查看报告</a></td>
                         </tr>
                         """
-                
+
                 repo_html += """
                         </tbody>
                     </table>
                 </div>
                 """
-                
+
                 owner_html += repo_html
-            
+
             owner_html += "</div>"
             repo_groups_html += owner_html
-        
+
         # 生成主报告HTML
         main_html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -672,7 +724,7 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
 <body>
     <h1>OpenHarmony 三方库测试报告</h1>
     <div class="timestamp">生成时间: {current_time}</div>
-    
+
     <div class="summary">
         <div class="summary-card">
             <div class="summary-title">测试用例统计</div>
@@ -701,7 +753,7 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
                 <div class="progress-text">通过率: {test_pass_rate:.2f}%</div>
             </div>
         </div>
-        
+
         <div class="summary-card">
             <div class="summary-title">三方库统计</div>
             <div class="summary-grid">
@@ -730,10 +782,10 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
             </div>
         </div>
     </div>
-    
+
     <h2>测试结果详情</h2>
     {repo_groups_html}
-    
+
     <script>
         // 页面加载时自动展开失败的测试
         document.addEventListener('DOMContentLoaded', function() {{
@@ -743,17 +795,17 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
 </body>
 </html>
         """
-        
+
         # 保存主报告
         main_report_path = os.path.join(HTML_REPORT_DIR, "index.html")
         with open(main_report_path, 'w', encoding='utf-8') as f:
             f.write(main_html)
-        
+
         # 复制必要的资源文件（如CSS、JS等）
         # 这里可以添加复制资源文件的代码
-        
+
         return main_report_path
-    
+
     except Exception as e:
         print(f"生成主报告时出错: {str(e)}")
         return None

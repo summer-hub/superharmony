@@ -101,7 +101,7 @@ def interactive_mode():
                 
             print(f"\n找到 {len(matched_libraries)} 个匹配的库:")
             for i, lib in enumerate(matched_libraries, 1):
-                print(f"{i}. {lib}")
+                print(f"{i}. {lib['name']}")
                 
             # 让用户选择要测试的库
             selected_indices = input("\n请输入要测试的库的序号(多个序号用逗号分隔，输入'all'测试所有匹配的库): ").strip()
@@ -148,13 +148,13 @@ def interactive_mode():
     
     # 询问release模式
     while True:
-        release_mode = input("是否开启release模式编译? (y/N): ").strip().lower()
+        release_mode = input("是否开启release模式编译? 默认是n(y/n): ").strip().lower()
         if release_mode in ['y', 'n', '']:
             args.release_mode = release_mode if release_mode else 'n'
             set_release_mode(args.release_mode == 'y')
             break
         else:
-            print("请输入 'y' 或 'n' (默认为N)")
+            print("请输入 'y' 或 'n' (默认为n)")
     
     # 设置SDK版本
     set_sdk_version(args.sdk_version)
@@ -198,6 +198,7 @@ def main():
         specific_libraries=args.specific_libraries if hasattr(args, 'specific_libraries') else None
     )
 
+    # Filter libraries by repo_type before running
     libraries, _, urls = read_libraries_from_excel()
 
     # 如果指定了特定库，则使用这些库

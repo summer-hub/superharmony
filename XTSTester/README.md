@@ -67,3 +67,8 @@ python run.py --parallel
 
 ## 报告查看
 测试完成后，报告将生成在`results/`目录下，支持Allure和HTML两种格式。
+
+查看Allure报告:
+```bash
+allure open ./allure-report
+```

@@ -13,7 +13,8 @@ from core.ReadExcel import get_repo_info
 
 
 def clone_and_build(library_name):
-    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
+    # Pass library_name to _determine_repo_type_and_config
+    repo_type, signing_config, BUNDLE_NAME = _determine_repo_type_and_config(library_name)
     """克隆仓库并构建项目，返回测试结果"""
     try:
         # 准备工作
@@ -21,15 +22,7 @@ def clone_and_build(library_name):
         
         # 从ReadExcel获取仓库信息
         owner, name, sub_dir = get_repo_info(library_name)
-        
-        if not owner or not name:
-            print(f"错误：无法获取库 {library_name} 的仓库信息")
-            # 修改为返回error状态
-            return {"test_results": {"ErrorTestClass": [{"name": "errorTest", "status": "error", "time": "1ms", "error_message": "无法获取仓库信息"}]},
-                    "summary": {"total": 1, "passed": 0, "failed": 0, "error": 1, "ignored": 0, "total_time_ms": 1},
-                    "class_times": {"ErrorTestClass": 1}}
-            
-        print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}, bundle_name ={BUNDLE_NAME}")
+        print(f"获取到仓库信息: owner={owner}, name={name}, sub_dir={sub_dir}")
         
         # 1. 创建并进入Libraries目录
         libraries_dir = os.path.abspath(os.path.join(os.getcwd(), "Libraries"))
@@ -57,7 +50,7 @@ def clone_and_build(library_name):
         # _start_deveco_studio()
 
         # 7.执行配置脚本
-        _run_config_scripts()
+        _run_config_scripts(library_name) # Pass library_name here
 
         # 8.安装ohpm依赖
         _install_ohpm_dependencies()
@@ -113,8 +106,8 @@ def clone_and_build(library_name):
         # 11.运行XTS并获取测试结果
         test_names = extract_test_names()
         if test_names:
-            # 调用run_xts函数执行测试
-            output = run_xts(library_name)
+            # 调用run_xts函数执行测试，并传入test_names
+            output = run_xts(library_name, test_names)
             extracted_data = extract_test_details(output)
             return extracted_data
         else:
@@ -199,19 +192,35 @@ def _build_project():
 def _get_ohos_name(library_name):
     """获取oh-package.json5中的主模块名称"""
     try:
+        # 处理字典类型的库名参数
+        actual_library_name = library_name
+        if isinstance(library_name, dict) and 'name' in library_name:
+            actual_library_name = library_name['name']
+        elif isinstance(library_name, dict):
+            # 如果是字典但没有'name'键，可能无法处理，返回空字符串或记录错误
+            print(f"警告：接收到字典类型的库名但缺少'name'键: {library_name}")
+            return ""
+
         # 特殊库处理 - 可以在这里添加特殊库的路径
         special_libs = {
             "aki": "platform/ohos/publish/aki/oh-package.json5"
         }
         
         # 确定oh-package.json5路径
-        if library_name in special_libs:
-            package_path = os.path.join(os.getcwd(), special_libs[library_name])
+        # 使用处理后的 actual_library_name 进行判断和路径拼接
+        if actual_library_name in special_libs:
+            package_path = os.path.join(os.getcwd(), special_libs[actual_library_name])
         else:
             package_path = os.path.join(os.getcwd(), "oh-package.json5")
             
         if not os.path.exists(package_path):
-            return ""
+            # 如果默认路径不存在，尝试在库名目录下查找
+            lib_dir_package_path = os.path.join(os.getcwd(), actual_library_name, "oh-package.json5")
+            if os.path.exists(lib_dir_package_path):
+                package_path = lib_dir_package_path
+            else:
+                print(f"警告：在 {os.getcwd()} 或 {os.path.join(os.getcwd(), actual_library_name)} 中都找不到 oh-package.json5")
+                return ""
             
         with open(package_path, 'r', encoding='utf-8') as f:
             content = f.read()
@@ -299,9 +308,9 @@ def _build_release():
         print(Fore.RED + f"Release模式构建失败: {e}" + Fore.RESET)
         raise
 
-def run_xts(library_name=None):
+def run_xts(library_name=None, test_names=None):
     """运行XTS测试套件，返回测试输出结果"""
-    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
+    _, _, BUNDLE_NAME = _determine_repo_type_and_config(library_name)
     try:
         # 获取原始库名
         from core.ReadExcel import read_libraries_from_excel
@@ -399,8 +408,7 @@ def run_xts(library_name=None):
         # 清理临时目录
         subprocess.run(["hdc", "shell", "rm", "-rf", tmp_dir], check=True)
 
-        # 4.提取并运行测试
-        test_names = extract_test_names()
+        # 4.运行测试
         print(f"测试名称: {test_names}")
         if test_names:
             output = run_in_new_cmd(test_names, original_name)  # 使用original_name
@@ -427,7 +435,7 @@ def run_xts(library_name=None):
         return f"XTS测试失败: {e}"  # 返回错误信息
 
 def run_in_new_cmd(test_names, library_name):
-    _, _, BUNDLE_NAME = _determine_repo_type_and_config()
+    _, _, BUNDLE_NAME = _determine_repo_type_and_config(library_name)
     test_classes = ",".join(test_names)
     print(f"Running tests: {test_classes}")
 
@@ -493,7 +501,7 @@ def run_in_new_cmd(test_names, library_name):
     print("STDERR:", result.stderr)
 
     # 生成测试报告
-    generate_reports(test_names, result.stdout, library_name)
+    generate_reports(result.stdout, library_name)
     
     return result.stdout
 
