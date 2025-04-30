@@ -18,7 +18,6 @@ from PyQt5.QtGui import QIcon, QColor, QFont, QTextCursor
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import config
 from ui.config_gui import show_config_dialog
-from ui.test_results_gui import TestResultsGUI
 
 # 尝试导入模糊匹配函数
 try:
@@ -97,7 +96,7 @@ class TestOutputThread(QThread):
                     
                     # 检测测试完成信息
                     if "所有测试报告已生成完成" in line:
-                        self.test_completed.emit(True, "测试和报告生成已完成，可以开始新的测试。")
+                        self.test_completed.emit(True, "测试和报告生成已完成，可以查看测试报告。")
             
             # 等待进程结束
             self.process.wait()
@@ -362,9 +361,19 @@ class MainGUI(QMainWindow):
             self.load_settings()
     
     def show_test_results(self):
-        """显示测试结果查看器"""
-        self.results_viewer = TestResultsGUI()
-        self.results_viewer.show()
+        """打开测试报告目录"""
+        report_dir = config.REPORT_DIR
+        if os.path.exists(report_dir):
+            # 使用系统默认程序打开目录
+            import subprocess
+            if os.name == 'nt':  # Windows
+                os.startfile(report_dir)
+            elif os.name == 'posix':  # Linux, Mac
+                subprocess.call(['xdg-open', report_dir])
+            self.statusBar().showMessage(f'已打开报告目录: {report_dir}')
+        else:
+            QMessageBox.warning(self, '警告', f'报告目录不存在: {report_dir}')
+            self.statusBar().showMessage('报告目录不存在')
     
     def search_libraries(self):
         """搜索库"""

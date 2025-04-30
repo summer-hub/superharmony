@@ -662,34 +662,3 @@ def _clone_repo(library_name):
         print(f"克隆仓库 {clone_url} 及其子模块...")
     else:
         print(f"克隆仓库 {clone_url}...")
-
-    try:
-        # 执行克隆
-        subprocess.run(cmd, check=True)
-
-        # 处理特殊目录结构
-        if sub_dir and name == "openharmony_tpc_samples":
-            os.rename(name, sub_dir)
-            print(f"重命名目录 {name} 为 {sub_dir}")
-
-        # 进入目标目录进行后续操作
-        os.chdir(target_dir)
-        try:
-            # 确保子模块初始化
-            if name not in recurse_repos or sub_dir:
-                subprocess.run(["git", "submodule", "update", "--init", "--recursive"], check=True)
-            
-            # 重置工作区
-            subprocess.run(["git", "checkout", "."], check=True)
-        finally:
-            os.chdir("..")
-
-        print(f"成功克隆仓库 {clone_url}")
-        return True
-
-    except subprocess.CalledProcessError as e:
-        print(f"Git克隆失败: {e}")
-        # 清理失败克隆的目录
-        if os.path.exists(target_dir):
-            shutil.rmtree(target_dir, ignore_errors=True)
-        return False

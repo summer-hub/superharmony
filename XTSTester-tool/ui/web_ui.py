@@ -25,7 +25,7 @@ def reset_test_status(process_id):
     with process_lock:
         if process_id in test_processes:
             test_processes[process_id]["running"] = False
-            test_processes[process_id]["logs"].append("测试和报告生成已完成，可以开始新的测试。")
+            test_processes[process_id]["logs"].append("测试和报告生成已完成，可以查看测试报告。")
 
 # 注册回调函数 - 这里需要修改原有的回调机制以支持多进程
 # 注意：这里假设ReportGenerator可以接受进程ID参数，如果不行需要另外处理
@@ -234,7 +234,7 @@ def run_test(process_id, repo_type, sdk_version, release_mode, specific_librarie
                 # 检测测试完成信息
                 if "所有测试报告已生成完成" in line:
                     with process_lock:
-                        test_processes[process_id]["logs"].append("测试和报告生成已完成，可以开始新的测试。")
+                        test_processes[process_id]["logs"].append("测试和报告生成已完成，可以查看测试报告。")
                         test_processes[process_id]["running"] = False
         
         process.wait()

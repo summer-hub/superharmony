@@ -8,7 +8,7 @@ import colorama  # 添加彩色输出支持
 colorama.init()
 
 from utils.config import HTML_REPORT_DIR, OVERALL_RESULTS_FILE
-from core.ReadExcel import get_repo_info
+from core.ReadExcel import read_libraries_from_excel, parse_git_url
 
 # 定义彩色输出函数
 def print_error(message):
@@ -44,6 +44,9 @@ def generate_html_report(overall_results):
     try:
         print("生成详细HTML测试报告...")
         
+        # 获取库列表和URL信息
+        libraries, _, urls = read_libraries_from_excel()
+        
         # 获取当前时间作为报告时间
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         
@@ -52,8 +55,9 @@ def generate_html_report(overall_results):
         
         for lib in overall_results.get("libraries", []):
             lib_name = lib.get("name", "")
-            owner, repo_name, sub_dir = get_repo_info(lib_name)
-            if owner and repo_name:  # Only proceed if we got valid repo info
+            if lib_name in urls:
+                url = urls[lib_name]
+                owner, repo_name, sub_dir = parse_git_url(url)
                 
                 # 特殊处理openharmony_tpc_samples仓库
                 if repo_name == "openharmony_tpc_samples" and sub_dir:
@@ -69,10 +73,7 @@ def generate_html_report(overall_results):
                     print_warning("警告: 发现没有名称的库，跳过生成报告")
                     continue
                     
-                # Get URL from repo info
-                owner, repo_name, sub_dir = get_repo_info(lib_name)
-                url = f"https://gitcode.com/{owner}/{repo_name}" if owner and repo_name else ""
-                lib_report_path = generate_library_report(lib, lib_name, url, HTML_REPORT_DIR)
+                lib_report_path = generate_library_report(lib, lib_name, urls.get(lib_name, ""), HTML_REPORT_DIR)
                 
                 # 只有当报告路径有效时才添加到库信息中
                 if lib_report_path:
@@ -129,8 +130,8 @@ def generate_library_report(lib, lib_name, url, HTML_REPORT_DIR):
             
         pass_rate = (lib_passed / lib_total * 100) if lib_total > 0 else 0
         
-        # 获取仓库信息
-        owner, repo_name, sub_dir = get_repo_info(lib_name)
+        # 解析Git URL
+        owner, repo_name, sub_dir = parse_git_url(url)
         repo_info = f"{owner}/{repo_name}"
         if sub_dir:
             repo_info += f" (子目录: {sub_dir})"
@@ -748,10 +749,6 @@ def generate_main_report(overall_results, repo_groups, current_time, HTML_REPORT
         main_report_path = os.path.join(HTML_REPORT_DIR, "index.html")
         with open(main_report_path, 'w', encoding='utf-8') as f:
             f.write(main_html)
-        
-        # 复制必要的资源文件（如CSS、JS等）
-        # 这里可以添加复制资源文件的代码
-        
         return main_report_path
     
     except Exception as e:
